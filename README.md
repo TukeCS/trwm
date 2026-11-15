@@ -71,10 +71,11 @@ in the bar.
 - **dwm-style tiling:** tags, master/stack layout, monocle, floating windows,
   multiple monitors (Xinerama), urgency hints, fullscreen (EWMH), dialogs float automatically,
   and you can move/resize windows with the mouse (with edge snapping)
-- **More layouts:** `dwindle` (like Hyprland: new windows split the window under the cursor),
-  `spiral` (the same, spiralling), `bstack` (master on top), `grid`, `deck`
-- **Auto-tiling helpers:** `retile` puts every window you floated back into the tiling, and
-  `drag_tiled = "swap"` lets you drag tiled windows to swap them instead of floating them
+- **Hyprland-style split layouts:** `dwindle` and `spiral`, where a new window splits the
+  window under your cursor, plus `bstack`, `grid` and `deck`
+- **Auto-tiling helpers:** `retile()` snaps every window you floated back into the tiling,
+  `drag_tiled = "swap"` lets you drag tiled windows to swap them instead of floating them,
+  and `togglelayout()` flips between two layouts on one key
 - **Gaps:** on by default. Change them live with `Mod+=` / `Mod+-`. With "smart gaps",
   a single window fills the screen without an outer gap
 - **Built-in status bar:** CPU, RAM, battery, temperature, disk, network, date and more,
@@ -351,7 +352,8 @@ commented there.
 ### Example config
 
 [`examples/tuke.lua`](examples/tuke.lua) is a full personal setup to get ideas from. It
-has a custom colour theme, Nerd Font icons, gaps, HiDPI settings, window rules,
+has a custom colour theme, Nerd Font icons, gaps, HiDPI settings, the Hyprland-like
+spiral/dwindle setup described under [Layouts](#a-hyprland-like-setup), window rules,
 media/brightness keys, screenshots, a wallpaper and autostart. To try it:
 
 ```sh
@@ -446,38 +448,78 @@ rules = {
 
 ### Layouts
 
-The first layout in the list is the default. Available layouts:
+The first layout in your `layouts` list is the default, and the bar shows the current
+layout's symbol next to the tags. Switch with `a.setlayout("name")` in a key binding;
+`a.setlayout()` with no name goes back to the previous layout (`Mod+space`).
+
+**dwm's layouts**
 
 | layout | what it does |
 |---|---|
-| `tile` | master on the left, the rest stacked on the right (dwm) |
-| `monocle` | one window at a time, full size |
-| `float` | no tiling |
+| `tile` | master on the left, the rest stacked on the right. `Mod+h` / `Mod+l` resize the master area, `Mod+i` / `Mod+d` change how many windows are in it |
+| `monocle` | one window at a time, full size. The bar shows how many windows there are, e.g. `[3]` |
+| `float` | no tiling: move and resize windows freely |
+
+**Split layouts (like Hyprland)**
+
+| layout | what it does |
+|---|---|
+| `dwindle` | a new window splits the window under the cursor in two, on the half the cursor is on. Wide spaces split side by side, tall ones top/bottom (`fibonacci` works as a name too) |
+| `spiral` | a new window also splits the window under the cursor, but the splits alternate side by side / top and bottom, and the new window goes right, bottom, left, top, … so opening windows from the newest one spirals inwards |
+
+**Extra layouts** (from dwm's vanitygaps patch)
+
+| layout | what it does |
+|---|---|
 | `bstack` | master on top, the rest side by side below |
 | `grid` | everything in an even grid |
 | `deck` | master on the left, the rest on top of each other on the right |
-| `dwindle` | like Hyprland: a new window splits the window under the cursor (or the last focused one) in two, on the side the cursor is on. Wide spaces split side by side, tall ones top/bottom. Closing a window gives its space back to its neighbour (`fibonacci` works as a name too) |
-| `spiral` | like `dwindle` (new windows split the window under the cursor), but splits alternate side by side / top and bottom, and the new window goes right, bottom, left, top, … so splitting the newest window spirals inwards |
 
-The bar shows the symbol of the current layout next to the tags.
+#### How the split layouts work
 
-`mfact` (`Mod+h` / `Mod+l`) sets the size of the master area. In `dwindle` and `spiral`,
-`Mod+h` / `Mod+l` move the split next to the focused window instead, and `Mod+Shift+Return`
-swaps it with the first window. Both use the same splits, so switching between them keeps
-every window where it is in the tree and only changes how the splits are drawn.
+- **Opening a window** splits the window under the mouse cursor. If the cursor isn't over a
+  window (for example it's on the bar), the window that had focus last is split.
+- **Closing a window** gives its space back to its neighbour; nothing else moves.
+- **`Mod+h` / `Mod+l`** move the split next to the focused window, making it bigger or smaller.
+- **`Mod+Shift+Return`** swaps the focused window with the first one.
+- **Dragging** a window with `Mod` + left mouse button and `drag_tiled = "swap"` swaps it with
+  the window you drop it on.
+- **Switching between `spiral` and `dwindle`** keeps every window in its place in the split
+  tree, only the way the splits are drawn changes.
+- **Each set of viewed tags remembers its own splits**, so switching tags and coming back
+  keeps your arrangement.
+
+A few things work differently than in `tile`:
+
+- `Mod+i` / `Mod+d` (number of master windows) do nothing here: there is no master area.
+- `Mod+j` / `Mod+k` move focus in the order windows were opened, not by position on screen.
+- Restarting trwm (`Mod+Shift+r`) keeps every window and its tags, but the splits start fresh.
+
+#### A Hyprland-like setup
+
+This is what [`examples/tuke.lua`](examples/tuke.lua) uses: spiral by default, `Mod+r` to
+flip between spiral and dwindle, dwm's keys for the classic layouts, and `Mod+a` to snap
+everything back into the tiling:
 
 ```lua
 layouts = {
+  { "S",   "spiral" },     -- default
+  { "D",   "dwindle" },
   { "[]=", "tile" },
   { "><>", "float" },
   { "[M]", "monocle" },
-  { "TTT", "bstack" },
-  { "###", "grid" },
-}
-```
+},
+drag_tiled = "swap",
 
-Switch to a layout with `a.setlayout("grid")` in a key binding, for example
-`{ "Mod+o", a.setlayout("grid") }`.
+keys = {
+  { "Mod+r",     a.togglelayout("spiral", "dwindle") },
+  { "Mod+t",     a.setlayout("tile") },
+  { "Mod+f",     a.setlayout("float") },
+  { "Mod+m",     a.setlayout("monocle") },
+  { "Mod+space", a.setlayout() },        -- back to the previous layout
+  { "Mod+a",     a.retile() },           -- put every floated window back into the tiling
+},
+```
 
 ### Floating windows and re-tiling
 
@@ -488,12 +530,15 @@ options make trwm behave more like an auto-tiler:
 ```lua
 drag_tiled = "swap",                 -- dragging a tiled window swaps it with the window
                                      -- you drop it on, even on another monitor
-{ "Mod+space", a.retile() },         -- a key: put every floated window back into the tiling
+{ "Mod+a", a.retile() },             -- a key: put every floated window back into the tiling
 ```
 
 `retile()` leaves windows that float on purpose alone: dialogs, popups, fixed-size windows,
 windows with a `floating = true` rule, and fullscreen windows. In the `float` layout it
 also switches to your first tiling layout.
+
+With `drag_tiled = "swap"`, you can still float a window with `Mod+Shift+space` or `Mod` +
+middle click.
 
 ### Other options
 

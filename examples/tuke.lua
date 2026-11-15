@@ -1,8 +1,10 @@
 -- tuke's trwm config
 --
 -- A full personal setup to get ideas from: Gentoo purple theme, Nerd Font
--- icons for tags and status, vanity gaps, HiDPI (144 dpi), window rules,
--- media/brightness keys, screenshots, a feh wallpaper and autostart.
+-- icons for tags and status, vanity gaps, HiDPI (144 dpi), Hyprland-style
+-- spiral/dwindle layouts (Mod+r flips between them, Mod+a re-tiles,
+-- dragging swaps windows), window rules, media/brightness keys,
+-- screenshots, a feh wallpaper and autostart.
 --
 -- To try it:   cp examples/tuke.lua ~/.config/trwm/config.lua
 --
@@ -88,9 +90,9 @@ local keys = {
   { "Mod+t",            a.setlayout("tile") },
   { "Mod+f",            a.setlayout("float") },
   { "Mod+m",            a.setlayout("monocle") },
-  { "Mod+s",            a.setlayout("bstack") },
-  { "Mod+o",            a.setlayout("grid") },
-  { "Mod+space",        a.setlayout() },           -- toggle last layout
+  { "Mod+r",            a.togglelayout("spiral", "dwindle") },  -- switch spiral <-> dwindle
+  { "Mod+space",        a.setlayout() },           -- back to the previous layout
+  { "Mod+a",            a.retile() },              -- arrange all: put every floated window back into the tiling
   { "Mod+Shift+space",  a.togglefloating() },
   { "Mod+Shift+f",      a.togglefullscreen() },
 
@@ -177,16 +179,17 @@ return {
   resizehints    = false,
   lockfullscreen = true,
   refresh_rate   = 240,   -- Hz, for moving/resizing with the mouse
+  drag_tiled     = "swap",  -- Mod+drag a tiled window: swap it where you drop it ("float" = dwm)
   focus_follows_mouse = true,
 
-  -- first entry is the default; available: tile monocle float bstack grid deck
+  -- first entry is the default; available: spiral dwindle tile float monocle
+  -- (bstack grid deck also exist if you ever want them)
   layouts = {
+    { "S", "spiral" },       -- like dwindle, but new windows spiral inwards (default)
+    { "D", "dwindle" },      -- like Hyprland: new windows split the one under the cursor
     { "[]=", "tile" },
     { "><>", "float" },
     { "[M]", "monocle" },
-    { "TTT", "bstack" },
-    { "###", "grid" },
-    { "[D]", "deck" },
   },
 
   keys = keys,
