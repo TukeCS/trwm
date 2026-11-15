@@ -227,7 +227,7 @@ pub struct WindowManager {
     running: bool,
     restart: bool,
     scanning: bool,
-    /// dwindle layout trees, per monitor and set of viewed tags
+    /// dwindle/spiral layout trees, per monitor and set of viewed tags
     trees: HashMap<(usize, u32), bsp::Node>,
 }
 
@@ -2364,8 +2364,8 @@ impl WindowManager {
             LayoutKind::BStack => self.bstack(m),
             LayoutKind::Grid => self.grid(m),
             LayoutKind::Deck => self.deck(m),
-            LayoutKind::Dwindle => self.dwindle(m),
-            LayoutKind::Spiral => self.fibonacci(m, true),
+            LayoutKind::Dwindle => self.tree_layout(m, false),
+            LayoutKind::Spiral => self.tree_layout(m, true),
             LayoutKind::Float => {}
         }
     }
@@ -2548,9 +2548,10 @@ impl WindowManager {
         (m, self.mons[m].tagset[self.mons[m].seltags])
     }
 
-    /// Hyprland-style dwindle: a tree where a new window splits the window
-    /// under the cursor (or the last focused one), on the cursor's side.
-    unsafe fn dwindle(&mut self, m: usize) {
+    /// dwindle / spiral: a tree where a new window splits the window under
+    /// the cursor (or the last focused one). In dwindle it goes on the
+    /// cursor's side; in spiral the side follows the spiral.
+    unsafe fn tree_layout(&mut self, m: usize, spiral: bool) {
         let (oh, ov, ih, iv, n) = self.getgaps(m);
         let key = self.tree_key(m);
         let tiled = self.tiled(m);
@@ -2595,9 +2596,13 @@ impl WindowManager {
                     let target = under
                         .or_else(|| self.mons[m].stack.iter().copied().find(|s| *s != w && placed.contains(s)))
                         .unwrap_or(*leaves.last().unwrap());
-                    let first = match (under, pointer) {
-                        (Some(u), Some((px, py))) => bsp::first_half(rect(u), px, py),
-                        _ => false,
+                    let first = if spiral {
+                        bsp::spiral_first(t.depth(target).unwrap_or(0))
+                    } else {
+                        match (under, pointer) {
+                            (Some(u), Some((px, py))) => bsp::first_half(rect(u), px, py),
+                            _ => false,
+                        }
                     };
                     t.insert(target, w, first);
                 }
@@ -2609,24 +2614,9 @@ impl WindowManager {
         let mon = &self.mons[m];
         let area = (mon.wx + ov, mon.wy + oh, mon.ww - 2 * ov, mon.wh - 2 * oh);
         let mut rects = vec![];
-        tree.layout(area, ih, iv, &mut rects);
+        tree.layout(area, ih, iv, spiral, &mut rects);
         self.trees.insert(key, tree);
         for (w, (x, y, ww, hh)) in rects {
-            self.place(w, x, y, ww, hh);
-        }
-    }
-
-    /// Fibonacci layouts (see [`fibonacci_rects`]).
-    unsafe fn fibonacci(&mut self, m: usize, spiral: bool) {
-        let (oh, ov, ih, iv, n) = self.getgaps(m);
-        if n == 0 {
-            return;
-        }
-        let tiled = self.tiled(m);
-        let mon = &self.mons[m];
-        let area = (mon.wx + ov, mon.wy + oh, mon.ww - 2 * ov, mon.wh - 2 * oh);
-        let rects = fibonacci_rects(n, area, mon.mfact, ih, iv, self.bh * 2, spiral);
-        for (w, (x, y, ww, hh)) in tiled.into_iter().zip(rects) {
             self.place(w, x, y, ww, hh);
         }
     }
@@ -2787,8 +2777,8 @@ impl WindowManager {
         if !self.arranges(m) {
             return;
         }
-        // dwindle: move the split next to the focused window instead
-        if self.cur_layout(m) == LayoutKind::Dwindle {
+        // dwindle/spiral: move the split next to the focused window instead
+        if matches!(self.cur_layout(m), LayoutKind::Dwindle | LayoutKind::Spiral) {
             let key = self.tree_key(m);
             if let (Some(sel), Some(t)) = (self.mons[m].sel, self.trees.get_mut(&key)) {
                 let (d, abs) = if f < 1.0 { (f, false) } else { (f - 1.0, true) };
@@ -2814,8 +2804,8 @@ impl WindowManager {
         if !self.arranges(m) || self.clients[&sel].isfloating {
             return;
         }
-        // dwindle: swap with the first window in the tree
-        if self.cur_layout(m) == LayoutKind::Dwindle {
+        // dwindle/spiral: swap with the first window in the tree
+        if matches!(self.cur_layout(m), LayoutKind::Dwindle | LayoutKind::Spiral) {
             let key = self.tree_key(m);
             if let Some(t) = self.trees.get_mut(&key) {
                 let mut leaves = vec![];
@@ -3057,55 +3047,6 @@ impl WindowManager {
     }
 }
 
-/// Fibonacci layouts: each window takes part of the remaining space and the
-/// next one splits what is left.
-/// - dwindle (like Hyprland): split along the longer side, new windows go right/down
-/// - spiral: the window goes left, top, right, bottom, ... spiralling inwards
-///
-/// The first split uses `mfact`, the rest split in half. When a split would be
-/// smaller than `min`, the remaining windows share the space that is left.
-pub fn fibonacci_rects(n: usize, area: (i32, i32, i32, i32), mfact: f32, ih: i32, iv: i32, min: i32, spiral: bool) -> Vec<(i32, i32, i32, i32)> {
-    let (mut x, mut y, mut w, mut h) = area;
-    let mut out = Vec::with_capacity(n);
-    for i in 0..n {
-        if i == n - 1 {
-            out.push((x, y, w, h));
-            break;
-        }
-        let ratio = if i == 0 { mfact } else { 0.5 };
-        // 0 = window left, 1 = top, 2 = right, 3 = bottom; the rest gets the other part
-        let dir = if spiral { i % 4 } else if w >= h { 0 } else { 1 };
-        let (len, gap) = if dir % 2 == 0 { (w, iv) } else { (h, ih) };
-        let first = ((len - gap) as f32 * ratio) as i32;
-        let rest = len - gap - first;
-        if first < min || rest < min {
-            out.extend(std::iter::repeat_n((x, y, w, h), n - i));
-            break;
-        }
-        match dir {
-            0 => {
-                out.push((x, y, first, h));
-                x += first + gap;
-                w = rest;
-            }
-            1 => {
-                out.push((x, y, w, first));
-                y += first + gap;
-                h = rest;
-            }
-            2 => {
-                out.push((x + rest + gap, y, first, h));
-                w = rest;
-            }
-            _ => {
-                out.push((x, y + rest + gap, w, first));
-                h = rest;
-            }
-        }
-    }
-    out
-}
-
 unsafe extern "C" fn xerror_dummy(_: *mut xlib::Display, _: *mut xlib::XErrorEvent) -> c_int {
     0
 }
@@ -3143,58 +3084,5 @@ pub fn exe_path() -> PathBuf {
             }
         }
         Err(_) => PathBuf::from("trwm"),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::fibonacci_rects;
-
-    fn overlap(a: (i32, i32, i32, i32), b: (i32, i32, i32, i32)) -> bool {
-        a.0 < b.0 + b.2 && b.0 < a.0 + a.2 && a.1 < b.1 + b.3 && b.1 < a.1 + a.3
-    }
-
-    #[test]
-    fn dwindle_matches_hyprland_shape() {
-        // 1000x600 landscape, 10px gaps, mfact 0.5
-        let r = fibonacci_rects(3, (0, 0, 1000, 600), 0.5, 10, 10, 20, false);
-        assert_eq!(r[0], (0, 0, 495, 600)); // master: left half
-        assert_eq!(r[1], (505, 0, 495, 295)); // then the right half splits top/bottom
-        assert_eq!(r[2], (505, 305, 495, 295));
-    }
-
-    #[test]
-    fn spiral_goes_round() {
-        let r = fibonacci_rects(5, (0, 0, 1600, 1600), 0.5, 0, 0, 10, true);
-        assert_eq!(r[0], (0, 0, 800, 1600)); // left
-        assert_eq!(r[1], (800, 0, 800, 800)); // top
-        assert_eq!(r[2], (1200, 800, 400, 800)); // right
-        assert_eq!(r[3], (800, 1200, 400, 400)); // bottom
-        assert_eq!(r[4], (800, 800, 400, 400)); // the rest
-    }
-
-    #[test]
-    fn layouts_fill_without_overlap() {
-        for spiral in [false, true] {
-            for n in 1..=8 {
-                let area = (10, 30, 2540, 1560);
-                let r = fibonacci_rects(n, area, 0.55, 10, 10, 50, spiral);
-                assert_eq!(r.len(), n);
-                for (i, a) in r.iter().enumerate() {
-                    assert!(a.2 > 0 && a.3 > 0);
-                    assert!(a.0 >= area.0 && a.1 >= area.1 && a.0 + a.2 <= area.0 + area.2 && a.1 + a.3 <= area.1 + area.3);
-                    for b in &r[i + 1..] {
-                        assert!(!overlap(*a, *b), "spiral={spiral} n={n}: {a:?} overlaps {b:?}");
-                    }
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn tiny_space_stacks_instead_of_slivers() {
-        let r = fibonacci_rects(10, (0, 0, 200, 100), 0.5, 0, 0, 40, false);
-        assert_eq!(r.len(), 10);
-        assert!(r.iter().all(|a| a.2 >= 40 && a.3 >= 40));
     }
 }

@@ -72,7 +72,7 @@ in the bar.
   multiple monitors (Xinerama), urgency hints, fullscreen (EWMH), dialogs float automatically,
   and you can move/resize windows with the mouse (with edge snapping)
 - **More layouts:** `dwindle` (like Hyprland: new windows split the window under the cursor),
-  `spiral` (Fibonacci), `bstack` (master on top), `grid`, `deck`
+  `spiral` (the same, spiralling), `bstack` (master on top), `grid`, `deck`
 - **Auto-tiling helpers:** `retile` puts every window you floated back into the tiling, and
   `drag_tiled = "swap"` lets you drag tiled windows to swap them instead of floating them
 - **Gaps:** on by default. Change them live with `Mod+=` / `Mod+-`. With "smart gaps",
@@ -457,13 +457,14 @@ The first layout in the list is the default. Available layouts:
 | `grid` | everything in an even grid |
 | `deck` | master on the left, the rest on top of each other on the right |
 | `dwindle` | like Hyprland: a new window splits the window under the cursor (or the last focused one) in two, on the side the cursor is on. Wide spaces split side by side, tall ones top/bottom. Closing a window gives its space back to its neighbour (`fibonacci` works as a name too) |
-| `spiral` | Fibonacci that spirals inwards: left, top, right, bottom, … |
+| `spiral` | like `dwindle` (new windows split the window under the cursor), but splits alternate side by side / top and bottom, and the new window goes right, bottom, left, top, … so splitting the newest window spirals inwards |
 
 The bar shows the symbol of the current layout next to the tags.
 
-`mfact` (`Mod+h` / `Mod+l`) sets the size of the first window. In `spiral`, the following
-splits are always half and half. In `dwindle`, `Mod+h` / `Mod+l` move the split next to the
-focused window instead, and `Mod+Shift+Return` swaps it with the first window.
+`mfact` (`Mod+h` / `Mod+l`) sets the size of the master area. In `dwindle` and `spiral`,
+`Mod+h` / `Mod+l` move the split next to the focused window instead, and `Mod+Shift+Return`
+swaps it with the first window. Both use the same splits, so switching between them keeps
+every window where it is in the tree and only changes how the splits are drawn.
 
 ```lua
 layouts = {

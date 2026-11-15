@@ -1,10 +1,13 @@
-//! Binary space partitioning tree for the Hyprland-style `dwindle` layout.
+//! Binary space partitioning tree for the Hyprland-style `dwindle` and
+//! `spiral` layouts.
 //!
 //! Each leaf is a window. A new window splits an existing leaf in two (the one
 //! under the cursor, or the last focused one); closing a window gives its
-//! space back to its sibling. Whether a split is side by side or on top of
-//! each other is decided from the shape of the space when laying out, like
-//! Hyprland: wide spaces split left/right, tall ones top/bottom.
+//! space back to its sibling. The same tree can be drawn two ways:
+//! - dwindle: wide spaces split left/right, tall ones top/bottom (Hyprland)
+//! - spiral: splits alternate left/right and top/bottom with depth, and new
+//!   windows go right, bottom, left, top, ... so repeatedly splitting the
+//!   newest window spirals inwards
 
 pub type Win = u64;
 pub type Rect = (i32, i32, i32, i32);
@@ -77,6 +80,14 @@ impl Node {
         }
     }
 
+    /// How many splits deep the window `w` is (0 = the root is that window).
+    pub fn depth(&self, w: Win) -> Option<usize> {
+        match self {
+            Node::Leaf(x) => (*x == w).then_some(0),
+            Node::Split { a, b, .. } => a.depth(w).or_else(|| b.depth(w)).map(|d| d + 1),
+        }
+    }
+
     /// Grow (`delta` > 0) or shrink the window `w` by moving the split it
     /// belongs to. With `absolute`, set that split's ratio instead.
     pub fn resize(&mut self, w: Win, delta: f32, absolute: bool) -> bool {
@@ -103,30 +114,45 @@ impl Node {
 
     /// Lay the tree out in `r`, with `ih`/`iv` px between windows stacked
     /// vertically/side by side.
-    pub fn layout(&self, r: Rect, ih: i32, iv: i32, out: &mut Vec<(Win, Rect)>) {
+    pub fn layout(&self, r: Rect, ih: i32, iv: i32, spiral: bool, out: &mut Vec<(Win, Rect)>) {
+        self.layout_at(r, ih, iv, spiral, 0, out);
+    }
+
+    fn layout_at(&self, r: Rect, ih: i32, iv: i32, spiral: bool, depth: usize, out: &mut Vec<(Win, Rect)>) {
         match self {
             Node::Leaf(w) => out.push((*w, r)),
             Node::Split { ratio, a, b } => {
                 let (x, y, w, h) = r;
-                if w >= h {
+                if side_by_side(r, depth, spiral) {
                     let first = (((w - iv) as f32) * ratio) as i32;
-                    a.layout((x, y, first.max(1), h), ih, iv, out);
-                    b.layout((x + first + iv, y, (w - first - iv).max(1), h), ih, iv, out);
+                    a.layout_at((x, y, first.max(1), h), ih, iv, spiral, depth + 1, out);
+                    b.layout_at((x + first + iv, y, (w - first - iv).max(1), h), ih, iv, spiral, depth + 1, out);
                 } else {
                     let first = (((h - ih) as f32) * ratio) as i32;
-                    a.layout((x, y, w, first.max(1)), ih, iv, out);
-                    b.layout((x, y + first + ih, w, (h - first - ih).max(1)), ih, iv, out);
+                    a.layout_at((x, y, w, first.max(1)), ih, iv, spiral, depth + 1, out);
+                    b.layout_at((x, y + first + ih, w, (h - first - ih).max(1)), ih, iv, spiral, depth + 1, out);
                 }
             }
         }
     }
 }
 
-/// Which side of `rect` the point is on, for a split of that rect:
+/// Is a split at `depth` of the space `r` side by side (else top/bottom)?
+fn side_by_side(r: Rect, depth: usize, spiral: bool) -> bool {
+    if spiral { depth.is_multiple_of(2) } else { r.2 >= r.3 }
+}
+
+/// Which side of `rect` the point is on, for a dwindle split of that rect:
 /// true = the first half (left or top).
 pub fn first_half(rect: Rect, px: i32, py: i32) -> bool {
     let (x, y, w, h) = rect;
     if w >= h { px < x + w / 2 } else { py < y + h / 2 }
+}
+
+/// Where a new window goes when splitting a leaf at `depth` in spiral mode:
+/// right, bottom, left, top, ... true = the first half (left or top).
+pub fn spiral_first(depth: usize) -> bool {
+    depth % 4 >= 2
 }
 
 #[cfg(test)]
@@ -135,7 +161,7 @@ mod tests {
 
     fn rects(n: &Node) -> Vec<(Win, Rect)> {
         let mut out = vec![];
-        n.layout((0, 0, 1000, 600), 0, 0, &mut out);
+        n.layout((0, 0, 1000, 600), 0, 0, false, &mut out);
         out
     }
 
@@ -190,7 +216,7 @@ mod tests {
             t.insert(1 + i as u64, new, i % 2 == 0);
         }
         let mut out = vec![];
-        t.layout((10, 10, 1900, 1000), 10, 10, &mut out);
+        t.layout((10, 10, 1900, 1000), 10, 10, false, &mut out);
         assert_eq!(out.len(), 7);
         for (i, (_, a)) in out.iter().enumerate() {
             assert!(a.2 > 0 && a.3 > 0);
@@ -199,5 +225,41 @@ mod tests {
                 assert!(!overlap, "{a:?} overlaps {b:?}");
             }
         }
+    }
+
+    #[test]
+    fn spiral_spirals_when_splitting_the_newest() {
+        // always split the newest window, placing the new one by spiral rules
+        let mut t = Node::Leaf(1);
+        for new in 2..=5u64 {
+            let target = new - 1;
+            let d = t.depth(target).unwrap();
+            t.insert(target, new, spiral_first(d));
+        }
+        let mut out = vec![];
+        t.layout((0, 0, 1600, 1600), 0, 0, true, &mut out);
+        out.sort();
+        assert_eq!(
+            out,
+            vec![
+                (1, (0, 0, 800, 1600)),     // left
+                (2, (800, 0, 800, 800)),    // top right
+                (3, (1200, 800, 400, 800)), // right
+                (4, (800, 1200, 400, 400)), // bottom
+                (5, (800, 800, 400, 400)),  // centre
+            ]
+        );
+    }
+
+    #[test]
+    fn spiral_can_split_any_window() {
+        let mut t = Node::Leaf(1);
+        t.insert(1, 2, spiral_first(0)); // 1 | 2
+        t.insert(1, 3, spiral_first(t.depth(1).unwrap())); // split 1 (left) top/bottom
+        let mut out = vec![];
+        t.layout((0, 0, 1000, 1000), 0, 0, true, &mut out);
+        assert_eq!(out, vec![(1, (0, 0, 500, 500)), (3, (0, 500, 500, 500)), (2, (500, 0, 500, 1000))]);
+        assert_eq!(t.depth(1), Some(2));
+        assert_eq!(t.depth(9), None);
     }
 }
