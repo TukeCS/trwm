@@ -11,7 +11,7 @@ the config file.
 
 ```sh
 # 1. install the dependencies for your distro (see "Dependencies" below), then:
-git clone <this repo> ~/.local/src/trwm && cd ~/.local/src/trwm
+git clone https://github.com/TukeCS/trwm ~/.local/src/trwm && cd ~/.local/src/trwm
 cargo install --path .
 
 # 2. create your config
