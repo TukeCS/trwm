@@ -184,6 +184,8 @@ return {
 
   -- first entry is the default; available: spiral dwindle tile float monocle
   -- (bstack grid deck also exist if you ever want them)
+  default_layout = "spiral",   -- every tag starts in spiral ("tile" = dwm)
+
   layouts = {
     { "S", "spiral" },       -- like dwindle, but new windows spiral inwards (default)
     { "D", "dwindle" },      -- like Hyprland: new windows split the one under the cursor

@@ -39,6 +39,7 @@ local keys = {
   { "Mod+t",            a.setlayout("tile") },
   { "Mod+f",            a.setlayout("float") },
   { "Mod+m",            a.setlayout("monocle") },
+  { "Mod+r",            a.togglelayout("spiral", "dwindle") },
   { "Mod+space",        a.setlayout() },           -- back to the previous layout
   -- { "Mod+a",         a.retile() },              -- put every floated window back into the tiling
 
@@ -108,9 +109,16 @@ return {
   drag_tiled     = "float",   -- Mod+drag a tiled window: "float" it (dwm) or "swap" it
                               -- with the window you drop it on (Hyprland)
 
-  -- first entry is the default. Also available: dwindle and spiral (Hyprland-style:
-  -- new windows split the window under the cursor), bstack, grid, deck. See the README.
+  -- the layout every tag starts with: "spiral" (default), "dwindle",
+  -- or "tile" for dwm's classic master/stack. Any layout from the list below.
+  default_layout = "spiral",
+
+  -- S and D are split layouts like Hyprland: a new window splits the window
+  -- under the cursor. Mod+r flips between them. Also available: bstack, grid,
+  -- deck (see the README).
   layouts = {
+    { "S",   "spiral" },
+    { "D",   "dwindle" },
     { "[]=", "tile" },
     { "><>", "float" },
     { "[M]", "monocle" },

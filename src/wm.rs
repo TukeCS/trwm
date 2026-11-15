@@ -606,8 +606,13 @@ impl WindowManager {
             }
             for l in &mut m.lt {
                 if *l >= nlayouts {
-                    *l = 0;
+                    *l = cfg.default_layout;
                 }
+            }
+            // a new default_layout switches the current layout to it
+            let (od, nd) = (&old.layouts[old.default_layout], &cfg.layouts[cfg.default_layout]);
+            if od.kind != nd.kind || od.symbol != nd.symbol {
+                m.lt[m.sellt] = cfg.default_layout;
             }
             for t in &mut m.tagset {
                 *t &= tagmask;
@@ -1217,9 +1222,12 @@ impl WindowManager {
     // -----------------------------------------------------------------------
 
     fn createmon(&self) -> Monitor {
-        let lt1 = if self.cfg.layouts.len() > 1 { 1 } else { 0 };
+        // start in default_layout; the "previous layout" (Mod+space) is the
+        // first other one in the list
+        let d = self.cfg.default_layout;
+        let other = (0..self.cfg.layouts.len()).find(|&i| i != d).unwrap_or(d);
         Monitor {
-            ltsymbol: self.cfg.layouts[0].symbol.clone(),
+            ltsymbol: self.cfg.layouts[d].symbol.clone(),
             mfact: self.cfg.mfact,
             nmaster: self.cfg.nmaster,
             num: 0,
@@ -1241,7 +1249,7 @@ impl WindowManager {
             clients: vec![],
             stack: vec![],
             sel: None,
-            lt: [0, lt1],
+            lt: [d, other],
             barwin: 0,
             bar_tags: vec![],
             bar_lt_end: 0,
@@ -2739,12 +2747,7 @@ impl WindowManager {
         match l {
             LayoutSel::Toggle => None,
             LayoutSel::Index(i) => Some(*i),
-            LayoutSel::Name(n) => self.cfg.layouts.iter().position(|l| {
-                l.symbol == *n
-                    || format!("{:?}", l.kind).eq_ignore_ascii_case(n)
-                    || (n.eq_ignore_ascii_case("floating") && l.kind == LayoutKind::Float)
-                    || (n.eq_ignore_ascii_case("fibonacci") && l.kind == LayoutKind::Dwindle)
-            }),
+            LayoutSel::Name(n) => self.cfg.layouts.iter().position(|l| l.matches(n)),
         }
     }
 

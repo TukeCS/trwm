@@ -5,9 +5,9 @@ in Rust. It includes its own **status bar** (like slstatus) and **screen locker*
 (like slock), and it is configured in **Lua**. Changes apply as soon as you save
 the config file.
 
-![trwm with the example config: purple bar with icon tags and status, two kitty terminals tiled with gaps](screenshot.png)
+![trwm opening and closing terminals in the spiral layout: each new window splits the one before it, spiralling inwards](demo.webp)
 
-<sub>tuke's setup: [`examples/tuke.lua`](examples/tuke.lua)</sub>
+<sub>The `spiral` layout, using tuke's setup: [`examples/tuke.lua`](examples/tuke.lua)</sub>
 
 ---
 
@@ -36,6 +36,7 @@ exec trwm
 | `Mod+Return` | open a terminal |
 | `Mod+p` | app launcher (rofi) |
 | `Mod+j` / `Mod+k` | focus next / previous window |
+| `Mod+r` | switch between the spiral and dwindle layouts |
 | `Mod+1` … `Mod+9` | switch to tag (workspace) 1–9 |
 | `Mod+Shift+1` … `9` | move the window to tag 1–9 |
 | `Mod+Shift+c` | close the window |
@@ -242,8 +243,10 @@ Then pick **trwm** in the session menu at login.
 
 ### The basic ideas
 
-- **Tiling:** new windows split the screen automatically. One window is the **master**
-  (the big one on the left), and the rest form the **stack** on the right.
+- **Tiling:** new windows split the screen automatically. By default trwm uses the
+  **spiral** layout: each new window splits the window under your mouse cursor in two, like
+  Hyprland. If you prefer dwm's classic layout, with one big **master** window on the left
+  and the rest **stacked** on the right, set `default_layout = "tile"` in your config.
 - **Tags** are like workspaces, but more flexible: a window can be on several tags, and you
   can view several tags at once.
 - **Bar:** the tags are on the left, then the layout symbol and the focused window's title.
@@ -276,12 +279,13 @@ Then pick **trwm** in the session menu at login.
 
 | key | layout |
 |---|---|
-| `Mod+t` | `[]=` tile (default) |
+| `Mod+r` | `S` spiral (default) ↔ `D` dwindle: the split layouts, like Hyprland |
+| `Mod+t` | `[]=` tile: dwm's master and stack |
 | `Mod+m` | `[M]` monocle: one window at a time, fullscreen-ish |
 | `Mod+f` | `><>` floating |
 | `Mod+space` | switch back to the previous layout |
 
-The `dwindle`, `spiral`, `bstack`, `grid` and `deck` layouts are built in too. Add them to `layouts` in your
+The `bstack`, `grid` and `deck` layouts are built in too. Add them to `layouts` in your
 config and give them keys (see [Layouts](#layouts)).
 
 **Tags**
@@ -360,7 +364,10 @@ media/brightness keys, screenshots, a wallpaper and autostart. To try it:
 cp examples/tuke.lua ~/.config/trwm/config.lua
 ```
 
-The comment at the top of the file lists the programs it expects.
+The comment at the top of the file lists the programs it expects. This is what it looks
+like:
+
+![tuke's setup: purple bar with icon tags and status, two kitty terminals side by side with gaps](screenshot.png)
 
 ### The basics
 
@@ -448,9 +455,20 @@ rules = {
 
 ### Layouts
 
-The first layout in your `layouts` list is the default, and the bar shows the current
-layout's symbol next to the tags. Switch with `a.setlayout("name")` in a key binding;
-`a.setlayout()` with no name goes back to the previous layout (`Mod+space`).
+`default_layout` picks the layout every tag starts with. It's `"spiral"` in the default
+config; set it to `"tile"` for dwm's behaviour:
+
+```lua
+default_layout = "spiral",   -- or "dwindle", "tile", "monocle", "float", ...
+```
+
+It can be any layout in your `layouts` list, by name or by symbol. If you leave it out, the
+first layout in the list is used. Changing it in a running trwm switches the current layout
+too.
+
+The bar shows the current layout's symbol next to the tags. Switch with
+`a.setlayout("name")` in a key binding; `a.setlayout()` with no name goes back to the
+previous layout (`Mod+space`).
 
 **dwm's layouts**
 
@@ -502,8 +520,9 @@ flip between spiral and dwindle, dwm's keys for the classic layouts, and `Mod+a`
 everything back into the tiling:
 
 ```lua
+default_layout = "spiral",
 layouts = {
-  { "S",   "spiral" },     -- default
+  { "S",   "spiral" },
   { "D",   "dwindle" },
   { "[]=", "tile" },
   { "><>", "float" },
@@ -544,6 +563,7 @@ middle click.
 
 | option | default | meaning |
 |---|---|---|
+| `default_layout` | `"spiral"` in the default config | the layout every tag starts with, see [Layouts](#layouts) |
 | `dpi` | unset | screen DPI for HiDPI screens, see [DPI and cursor](#dpi-and-cursor) |
 | `cursor_size` / `cursor_theme` | unset | mouse cursor size in px / theme name, see [DPI and cursor](#dpi-and-cursor) |
 | `showbar` / `topbar` | `true` / `true` | show the bar / put it at the top |

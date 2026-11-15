@@ -92,6 +92,33 @@ pub struct LayoutDef {
     pub kind: LayoutKind,
 }
 
+impl LayoutKind {
+    pub fn name(self) -> &'static str {
+        match self {
+            LayoutKind::Tile => "tile",
+            LayoutKind::Monocle => "monocle",
+            LayoutKind::Float => "float",
+            LayoutKind::BStack => "bstack",
+            LayoutKind::Grid => "grid",
+            LayoutKind::Deck => "deck",
+            LayoutKind::Dwindle => "dwindle",
+            LayoutKind::Spiral => "spiral",
+        }
+    }
+}
+
+impl LayoutDef {
+    /// Does `name` refer to this layout? Accepts the layout name, a few
+    /// aliases, or the symbol shown in the bar.
+    pub fn matches(&self, name: &str) -> bool {
+        let n = name.to_ascii_lowercase();
+        self.symbol == name
+            || self.kind.name() == n
+            || (n == "floating" && self.kind == LayoutKind::Float)
+            || (n == "fibonacci" && self.kind == LayoutKind::Dwindle)
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Rule {
     pub class: Option<String>,
@@ -215,6 +242,8 @@ pub struct Config {
     pub drag_swap: bool,
     pub focus_follows_mouse: bool,
     pub layouts: Vec<LayoutDef>,
+    /// index into `layouts` of the layout every tag starts with
+    pub default_layout: usize,
     pub keys: Vec<Key>,
     pub buttons: Vec<Button>,
     pub status: StatusCfg,
@@ -673,6 +702,14 @@ impl Config {
         if layouts.is_empty() {
             return Err(lerr("layouts: need at least one layout"));
         }
+        // default_layout = "spiral" / "tile" / a symbol; unset = the first one
+        let default_layout = match t.get::<Option<String>>("default_layout")? {
+            None => 0,
+            Some(name) => layouts.iter().position(|l| l.matches(&name)).ok_or_else(|| {
+                let names: Vec<String> = layouts.iter().map(|l| l.kind.name().to_string()).collect();
+                lerr(format!("default_layout: '{name}' is not in your layouts list ({})", names.join(", ")))
+            })?,
+        };
 
         let mut keys = Vec::new();
         if let Some(l) = t.get::<Option<Table>>("keys")? {
@@ -815,6 +852,7 @@ impl Config {
             },
             focus_follows_mouse: get(t, "focus_follows_mouse", true)?,
             layouts,
+            default_layout,
             keys,
             buttons,
             status,
@@ -868,6 +906,12 @@ mod tests {
         assert_eq!(Config::from_source("return { dpi = 144 }", "t", None).unwrap().dpi, Some(144));
         assert_eq!(Config::from_source("return {}", "t", None).unwrap().dpi, None);
         assert!(Config::from_source("return { cursor_size = 2 }", "t", None).is_err());
+        // default_layout picks by name or symbol, regardless of list order
+        let l = "layouts = { {'[]=','tile'}, {'S','spiral'}, {'><>','float'} }";
+        assert_eq!(Config::from_source(&format!("return {{ {l} }}"), "t", None).unwrap().default_layout, 0);
+        assert_eq!(Config::from_source(&format!("return {{ {l}, default_layout = 'spiral' }}"), "t", None).unwrap().default_layout, 1);
+        assert_eq!(Config::from_source(&format!("return {{ {l}, default_layout = '><>' }}"), "t", None).unwrap().default_layout, 2);
+        assert!(Config::from_source(&format!("return {{ {l}, default_layout = 'grid' }}"), "t", None).is_err());
         let c = Config::from_source("return { cursor_size = 36, cursor_theme = 'Adwaita' }", "t", None).unwrap();
         assert_eq!((c.cursor_size, c.cursor_theme.as_deref()), (Some(36), Some("Adwaita")));
     }
