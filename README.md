@@ -341,6 +341,18 @@ commented there.
   shows the error in the bar. `trwm check` shows the full error in your terminal.
 - **Split it up:** `require("keys")` loads `~/.config/trwm/keys.lua`.
 
+### Example config
+
+[`examples/tuke.lua`](examples/tuke.lua) is a full personal setup to get ideas from. It
+has a custom colour theme, Nerd Font icons, gaps, HiDPI settings, window rules,
+media/brightness keys, screenshots, a wallpaper and autostart. To try it:
+
+```sh
+cp examples/tuke.lua ~/.config/trwm/config.lua
+```
+
+The comment at the top of the file lists the programs it expects.
+
 ### The basics
 
 ```lua
