@@ -220,6 +220,7 @@ pub struct WindowManager {
     cfg_mtime: Option<SystemTime>,
     status: Status,
     stext: String,
+    /// a message shown in the bar instead of the status, and when it goes away
     error: Option<(String, Instant)>,
     children: Vec<Child>,
     lock_child: Option<Child>,
@@ -422,7 +423,7 @@ impl WindowManager {
                     // a bug in one handler must not take the whole X session down
                     let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.handle(&mut ev)));
                     if r.is_err() {
-                        self.error = Some(("internal error, see stderr".into(), Instant::now()));
+                        self.error = Some(("internal error, see stderr".into(), Instant::now() + Duration::from_secs(20)));
                     }
                 }
                 if !self.running {
@@ -511,11 +512,12 @@ impl WindowManager {
                 self.apply_wallpaper(false);
             }
 
-        if let Some((_, t)) = &self.error
-            && t.elapsed() > Duration::from_secs(20) {
-                self.error = None;
-                self.updatestatus();
-            }
+        if let Some((_, until)) = &self.error
+            && Instant::now() >= *until
+        {
+            self.error = None;
+            self.updatestatus();
+        }
         if self.cfg.status.enabled && self.status.tick(&self.cfg) {
             self.updatestatus();
         }
@@ -593,7 +595,13 @@ impl WindowManager {
     fn show_error(&mut self, msg: String) {
         eprintln!("trwm: {msg}");
         let first = msg.lines().next().unwrap_or("").to_string();
-        self.error = Some((first, Instant::now()));
+        self.error = Some((first, Instant::now() + Duration::from_secs(20)));
+        unsafe { self.updatestatus() };
+    }
+
+    /// Show a message in the bar for `secs` seconds (not an error).
+    pub fn startup_message(&mut self, msg: String, secs: u64) {
+        self.error = Some((msg, Instant::now() + Duration::from_secs(secs)));
         unsafe { self.updatestatus() };
     }
 
@@ -613,7 +621,7 @@ impl WindowManager {
 
         let fonts = config::with_dpi(&cfg.fonts, cfg.dpi);
         if fonts != config::with_dpi(&old.fonts, old.dpi) && !self.drw.set_fonts(&fonts) {
-            self.error = Some(("could not load any configured font".into(), Instant::now()));
+            self.error = Some(("could not load any configured font".into(), Instant::now() + Duration::from_secs(20)));
         }
         let fh = self.drw.font_h() as i32;
         self.bh = fh + 2;

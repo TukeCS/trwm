@@ -8,6 +8,7 @@
 
 mod bsp;
 mod config;
+mod doctor;
 mod drw;
 mod input;
 mod outputs;
@@ -31,6 +32,8 @@ commands:
                       trwm msg lock
                       trwm msg 'trwm.view(3)'
                       trwm msg 'trwm.wallpaper(\"~/Pictures/wall.png\")'
+  doctor            check your setup (programs, fonts, lock screen, X server,
+                    config) and say how to fix what's missing
   status            print the status line once and exit
   keyboard [apply]  show the keyboard layout (and what the config sets), or
                     apply the config's keyboard settings now
@@ -99,6 +102,7 @@ fn main() {
                 cfg.status.components.len()
             );
         }
+        Some("doctor") => exit(doctor::run(cfg_path.as_deref())),
         Some("keyboard") => keyboard_cmd(load(), args.get(1).map(String::as_str)),
         Some("input") => input_cmd(load(), args.get(1).map(String::as_str)),
         Some("monitors") => monitors_cmd(load(), args.get(1).map(String::as_str)),
@@ -110,6 +114,8 @@ fn main() {
 }
 
 fn run_wm(cfg_path: Option<PathBuf>) {
+    // first start: write the default config so there is a file to edit
+    let first_start = cfg_path.is_none() && write_default_config().is_some();
     // a broken config must never leave you without a window manager:
     // fall back to the built-in default and show the error in the bar
     let (cfg, err) = match config::Config::load(cfg_path.as_deref()) {
@@ -126,6 +132,11 @@ fn run_wm(cfg_path: Option<PathBuf>) {
     };
     if let Some(e) = err {
         wm.startup_error(format!("config error: {e}"));
+    } else if first_start {
+        wm.startup_message(
+            "welcome! Mod+Return terminal · Mod+p launcher · Mod+Shift+q quit · config: ~/.config/trwm/config.lua · `trwm doctor` checks your setup".into(),
+            90,
+        );
     }
     if wm.run() {
         // restart: re-exec ourselves, keeping all windows (and their tags)
@@ -176,6 +187,19 @@ fn keyboard_cmd(cfg: config::Config, sub: Option<&str>) {
         }
         x11::xlib::XCloseDisplay(dpy);
     }
+}
+
+/// Write the default config to ~/.config/trwm/config.lua if there is none.
+/// Returns its path if it was written.
+fn write_default_config() -> Option<PathBuf> {
+    let p = config::default_path();
+    if p.exists() {
+        return None;
+    }
+    std::fs::create_dir_all(p.parent()?).ok()?;
+    std::fs::write(&p, config::DEFAULT_CONFIG).ok()?;
+    eprintln!("trwm: wrote the default config to {}", p.display());
+    Some(p)
 }
 
 fn open_display() -> *mut x11::xlib::Display {

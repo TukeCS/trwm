@@ -18,9 +18,8 @@ the config file.
 git clone https://github.com/TukeCS/trwm ~/.local/src/trwm && cd ~/.local/src/trwm
 cargo install --path .
 
-# 2. create your config
-mkdir -p ~/.config/trwm
-trwm default-config > ~/.config/trwm/config.lua
+# 2. check your setup: lists anything missing and how to install it
+trwm doctor
 
 # 3. (recommended) PAM file for the screen locker
 sudo install -m644 extra/trwm.pam /etc/pam.d/trwm
@@ -28,6 +27,10 @@ sudo install -m644 extra/trwm.pam /etc/pam.d/trwm
 # 4. start it: put this at the end of ~/.xinitrc, then run `startx`
 exec trwm
 ```
+
+The first time trwm starts, it writes your config to `~/.config/trwm/config.lua` and shows
+the most important keys in the bar. That file explains every option, with everything that's
+off by default commented out, so reading it is the quickest way to learn what trwm can do.
 
 **The keys you need first** (`Mod` is the Super/Windows key):
 
@@ -46,7 +49,7 @@ exec trwm
 
 To change something, edit `~/.config/trwm/config.lua` and save it. The change applies
 immediately. If the config has a mistake, trwm keeps the old config and shows the error
-in the bar.
+in the bar. If something doesn't work, run `trwm doctor`.
 
 ---
 
@@ -69,6 +72,8 @@ in the bar.
 
 ## Features
 
+- **Easy setup:** `trwm doctor` checks your system and tells you how to fix what's missing,
+  trwm writes its config on first start, and that config explains every option
 - **dwm-style tiling:** tags, master/stack layout, monocle, floating windows,
   multiple monitors (Xinerama), urgency hints, fullscreen (EWMH), dialogs float automatically,
   and you can move/resize windows with the mouse (with edge snapping)
@@ -195,13 +200,34 @@ cargo build --release
 sudo install -m755 target/release/trwm /usr/local/bin/trwm
 ```
 
-Then create your config and (recommended) the PAM file for the locker:
+Then check that everything is in place, and install the PAM file for the locker
+(recommended):
 
 ```sh
-mkdir -p ~/.config/trwm
-trwm default-config > ~/.config/trwm/config.lua
+trwm doctor
 sudo install -m644 extra/trwm.pam /etc/pam.d/trwm
 ```
+
+You don't need to create a config: trwm writes `~/.config/trwm/config.lua` the first time it
+starts. To start over with the default later, run
+`trwm default-config > ~/.config/trwm/config.lua`.
+
+### `trwm doctor`
+
+`trwm doctor` checks everything trwm needs and tells you how to fix what's missing, with the
+install command for your distro:
+
+- **Config:** does it load without errors? Does the wallpaper exist?
+- **Programs:** every program your keys, autostart and status bar start (terminal,
+  launcher, …), including ones started inside a terminal like `kitty -e yazi`.
+- **Fonts:** are they really installed, or would another font be used instead?
+- **Lock screen:** is `/etc/pam.d/trwm` set up? (Important on distros with `pam_faillock`.)
+- **X server:** the extensions trwm uses, and which window manager is running.
+- **Keyboard, monitor and mouse settings:** are the layout and output names valid?
+- **PATH and startup:** can `trwm` be found, and does `.xinitrc` or a display manager start it?
+
+Run it from a terminal inside your X session for the full check. It exits with an error code
+when it finds a problem, so scripts can use it too.
 
 **Your own config is never overwritten:** trwm reads `~/.config/trwm/config.lua`. The
 `config.lua` in this repo is only the default you start from.
@@ -343,9 +369,10 @@ config and give them keys (see [Layouts](#layouts)).
 
 ## Configuration
 
-The config lives at `~/.config/trwm/config.lua`. If that file doesn't exist, trwm uses the
-built-in default, which is the [`config.lua`](config.lua) in this repo. Every option is
-commented there.
+The config lives at `~/.config/trwm/config.lua`. trwm writes it the first time it starts,
+from the default [`config.lua`](config.lua) in this repo. **That file is also the manual:**
+every option is in it with an explanation, and everything that's off by default is commented
+out, so you turn a feature on by removing the `--` in front of it.
 
 - **Hot reload:** saving the file (or any other `.lua` file in `~/.config/trwm/`) applies
   it immediately.
@@ -852,6 +879,7 @@ trwm keyboard [apply]    show the keyboard layout, or apply the config's keyboar
 trwm input [apply]       list mice/touchpads and their settings, or apply the config's
 trwm monitors [apply]    list monitors (names and modes), or apply the config's monitor
                          and screen settings
+trwm doctor              check your setup and say how to fix what's missing
 trwm check               check the config for errors
 trwm default-config      print the built-in default config
 trwm -c FILE ...         use another config file
@@ -861,6 +889,8 @@ trwm --version
 ---
 
 ## Troubleshooting
+
+Run **`trwm doctor`** first: it finds most problems and tells you the fix.
 
 | problem | fix |
 |---|---|
