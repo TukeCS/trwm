@@ -15,6 +15,7 @@ use x11::xlib::{self, Atom, Window};
 use x11::{xcursor, xinerama, xrandr, xss};
 
 use crate::bsp;
+use crate::keyboard;
 use crate::config::{self, Click, Cmd, Config, Gaps, LayoutKind, LayoutSel, Spawn};
 use crate::drw::{Drw, Scheme};
 use crate::status::Status;
@@ -229,6 +230,8 @@ pub struct WindowManager {
     scanning: bool,
     /// dwindle/spiral layout trees, per monitor and set of viewed tags
     trees: HashMap<(usize, u32), bsp::Node>,
+    /// keycode of each entry in cfg.keys (0 = key not on this keyboard)
+    keycodes: Vec<xlib::KeyCode>,
 }
 
 const WITHDRAWN_STATE: c_long = 0;
@@ -319,6 +322,7 @@ impl WindowManager {
                 running: true,
                 scanning: false,
                 trees: HashMap::new(),
+                keycodes: Vec::new(),
                 restart: false,
             };
             wm.drw.resize(sw as u32, wm.bh as u32);
@@ -371,6 +375,7 @@ impl WindowManager {
             | xlib::PropertyChangeMask;
         xlib::XChangeWindowAttributes(dpy, self.root, xlib::CWEventMask | xlib::CWCursor, &mut wa);
         xlib::XSelectInput(dpy, self.root, wa.event_mask);
+        self.apply_keyboard();
         self.grabkeys();
         self.focus(None);
 
@@ -434,6 +439,8 @@ impl WindowManager {
     /// Called once a second: status, hot reload, idle lock, children.
     unsafe fn tick(&mut self) {
         self.children.retain_mut(|c| !matches!(c.try_wait(), Ok(Some(_)) | Err(_)));
+        // the layout can also be switched by an XKB hotkey (grp:alt_shift_toggle)
+        self.update_keymap();
         if let Some(c) = &mut self.lock_child
             && !matches!(c.try_wait(), Ok(None)) {
                 self.lock_child = None;
@@ -650,6 +657,9 @@ impl WindowManager {
         if old.dpi != self.cfg.dpi {
             self.apply_dpi();
         }
+        if old.keyboard != self.cfg.keyboard {
+            self.apply_keyboard();
+        }
         if old.cursor_size != self.cfg.cursor_size || old.cursor_theme != self.cfg.cursor_theme {
             self.apply_cursor();
         }
@@ -843,6 +853,26 @@ impl WindowManager {
                     self.feh(&p, &mode);
                 }
             }
+            Cmd::NextKeyboard(d) => {
+                let n = keyboard::layouts(self.dpy).len().max(1) as i32;
+                let g = (keyboard::group(self.dpy) as i32 + d).rem_euclid(n);
+                keyboard::set_group(self.dpy, g as usize);
+                self.update_keymap();
+            }
+            Cmd::SetKeyboard(name) => {
+                let list = keyboard::layouts(self.dpy);
+                let idx = match name.parse::<usize>() {
+                    Ok(i) if i >= 1 && i <= list.len() => Some(i - 1),
+                    _ => list.iter().position(|l| *l == name),
+                };
+                match idx {
+                    Some(i) => {
+                        keyboard::set_group(self.dpy, i);
+                        self.update_keymap();
+                    }
+                    None => self.show_error(format!("setkeyboard: '{name}' is not one of your layouts ({})", list.join(", "))),
+                }
+            }
             Cmd::RefreshStatus => {
                 self.status.refresh();
                 self.next_tick = Instant::now();
@@ -914,6 +944,26 @@ impl WindowManager {
         match cmd.spawn() {
             Ok(c) => self.lock_child = Some(c),
             Err(e) => self.show_error(format!("lock: {e}")),
+        }
+    }
+
+    /// `keyboard = { ... }`: layout, key repeat, num lock.
+    unsafe fn apply_keyboard(&mut self) {
+        if let Err(e) = keyboard::apply(self.dpy, &self.cfg.keyboard) {
+            self.show_error(e);
+        }
+        // the keymap may have changed: grab the keys again on their new keycodes
+        self.grabkeys();
+        self.update_keymap();
+    }
+
+    /// Remember the active keyboard layout for the `keymap` status component.
+    fn update_keymap(&mut self) {
+        let name = keyboard::active_name(self.dpy).unwrap_or_default();
+        let changed = crate::status::KEYMAP.lock().map(|mut k| std::mem::replace(&mut *k, name.clone()) != name).unwrap_or(false);
+        if changed {
+            self.status.refresh();
+            self.next_tick = Instant::now();
         }
     }
 
@@ -1493,8 +1543,10 @@ impl WindowManager {
         self.updatenumlockmask();
         let mods = [0, xlib::LockMask, self.numlockmask, self.numlockmask | xlib::LockMask];
         xlib::XUngrabKey(self.dpy, xlib::AnyKey, xlib::AnyModifier, self.root);
-        for k in &self.cfg.keys {
-            let code = xlib::XKeysymToKeycode(self.dpy, k.keysym);
+        // keys are matched by the physical key, so "Mod+1" also works on layouts
+        // where 1 needs Shift (AZERTY)
+        self.keycodes = self.cfg.keys.iter().map(|k| xlib::XKeysymToKeycode(self.dpy, k.keysym)).collect();
+        for (k, &code) in self.cfg.keys.iter().zip(&self.keycodes) {
             if code == 0 {
                 continue;
             }
@@ -1520,14 +1572,14 @@ impl WindowManager {
     }
 
     unsafe fn keypress(&mut self, e: &mut xlib::XKeyEvent) {
-        let ks = xlib::XKeycodeToKeysym(self.dpy, e.keycode as xlib::KeyCode, 0);
         let state = self.cleanmask(e.state);
         let funcs: Vec<mlua::Function> = self
             .cfg
             .keys
             .iter()
-            .filter(|k| k.keysym == ks && self.cleanmask(k.mods) == state)
-            .map(|k| k.func.clone())
+            .zip(&self.keycodes)
+            .filter(|(k, code)| **code != 0 && **code as c_uint == e.keycode && self.cleanmask(k.mods) == state)
+            .map(|(k, _)| k.func.clone())
             .collect();
         for f in funcs {
             self.run_lua(f, None);

@@ -9,6 +9,7 @@
 mod bsp;
 mod config;
 mod drw;
+mod keyboard;
 mod lock;
 mod pam;
 mod status;
@@ -28,6 +29,8 @@ commands:
                       trwm msg 'trwm.view(3)'
                       trwm msg 'trwm.wallpaper(\"~/Pictures/wall.png\")'
   status            print the status line once and exit
+  keyboard [apply]  show the keyboard layout (and what the config sets), or
+                    apply the config's keyboard settings now
   check             check the config for errors and exit
   default-config    print the built-in default config
   -v, --version     print the version";
@@ -90,6 +93,7 @@ fn main() {
                 cfg.status.components.len()
             );
         }
+        Some("keyboard") => keyboard_cmd(load(), args.get(1).map(String::as_str)),
         Some("default-config") => print!("{}", config::DEFAULT_CONFIG),
         Some("-v" | "--version") => println!("trwm-{}", env!("CARGO_PKG_VERSION")),
         Some("-h" | "--help") => println!("{USAGE}"),
@@ -121,6 +125,48 @@ fn run_wm(cfg_path: Option<PathBuf>) {
         let exe = wm::exe_path();
         let err = std::process::Command::new(exe).args(std::env::args().skip(1)).env("TRWM_RESTARTED", "1").exec();
         die(&format!("restart failed: {err}"));
+    }
+}
+
+/// `trwm keyboard`: show the keyboard settings; `trwm keyboard apply`: apply
+/// the `keyboard` section of the config now.
+fn keyboard_cmd(cfg: config::Config, sub: Option<&str>) {
+    unsafe {
+        let dpy = x11::xlib::XOpenDisplay(std::ptr::null());
+        if dpy.is_null() {
+            die("cannot open display");
+        }
+        match sub {
+            None | Some("show") => {
+                match keyboard::current(dpy) {
+                    Some(c) => println!(
+                        "now:     layout={} variant={} model={} options={} (rules {})",
+                        c.layout, c.variant, c.model, c.options, c.rules
+                    ),
+                    None => println!("now:     unknown (the X server didn't say)"),
+                }
+                println!("active:  {}", keyboard::active_name(dpy).unwrap_or_else(|| "?".into()));
+                if cfg.keyboard.sets_layout() {
+                    match keyboard::resolve(dpy, &cfg.keyboard) {
+                        Ok(r) => println!(
+                            "config:  layout={} variant={} model={} options={}\n         -> keycodes={} types={} compat={} symbols={}",
+                            r.layout, r.variant, r.model, r.options, r.keycodes, r.types, r.compat, r.symbols
+                        ),
+                        Err(e) => println!("config:  {e}"),
+                    }
+                } else {
+                    println!("config:  no keyboard layout set");
+                }
+            }
+            Some("apply") => {
+                if let Err(e) = keyboard::apply(dpy, &cfg.keyboard) {
+                    die(&e);
+                }
+                println!("applied");
+            }
+            Some(o) => die(&format!("keyboard: unknown subcommand '{o}' (show, apply)")),
+        }
+        x11::xlib::XCloseDisplay(dpy);
     }
 }
 

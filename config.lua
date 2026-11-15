@@ -41,6 +41,7 @@ local keys = {
   { "Mod+m",            a.setlayout("monocle") },
   { "Mod+r",            a.togglelayout("spiral", "dwindle") },
   { "Mod+space",        a.setlayout() },           -- back to the previous layout
+  -- { "Mod+Ctrl+space", a.nextkeyboard() },       -- next keyboard layout (see `keyboard`)
   -- { "Mod+a",         a.retile() },              -- put every floated window back into the tiling
 
   -- gaps: Mod+= / Mod+- bigger/smaller, Mod+g on/off, Mod+Shift+g default size
@@ -81,6 +82,18 @@ return {
                                       -- + Xft.dpi). Unset = leave it alone (usually 96)
   -- cursor_size  = 24,               -- mouse cursor size in pixels (like Xcursor.size)
   -- cursor_theme = "Adwaita",        -- mouse cursor theme (like Xcursor.theme)
+
+  -- keyboard layout, key repeat and num lock (instead of setxkbmap, xset r rate
+  -- and numlockx). Leave out what you don't want to change. All layouts and
+  -- options are listed in /usr/share/X11/xkb/rules/base.lst
+  -- keyboard = {
+  --   layout       = "us",                -- or { "us", "fr" } for several
+  --   variant      = "",                  -- or { "", "azerty" }, one per layout
+  --   options      = "caps:escape",       -- "grp:alt_shift_toggle" switches layouts
+  --   repeat_delay = 300,                 -- ms before a held key repeats
+  --   repeat_rate  = 40,                  -- repeats per second
+  --   numlock      = true,
+  -- },
 
   borderpx = 1,
   snap     = 32,

@@ -98,7 +98,7 @@ To **build** trwm you need:
 |---|---|
 | Rust **1.88 or newer** + cargo | the compiler |
 | a C compiler + pkg-config | trwm builds Lua 5.4 from source, so you don't need Lua installed |
-| libX11, libXft, libXinerama, libXss, libXext, libXrandr, libXcursor | X11, fonts, multi-monitor, idle detection, DPMS, DPI, cursors |
+| libX11, libXft, libXinerama, libXss, libXext, libXrandr, libXcursor, libxkbfile | X11, fonts, multi-monitor, idle detection, DPMS, DPI, cursors, keyboard layouts |
 | PAM (development files) | the screen locker checks your password with it |
 
 **At runtime** it uses:
@@ -121,7 +121,7 @@ You can swap kitty and rofi for any other programs in the config.
 ```sh
 sudo emerge --ask dev-lang/rust-bin dev-util/pkgconf \
     x11-libs/libX11 x11-libs/libXft x11-libs/libXinerama \
-    x11-libs/libXScrnSaver x11-libs/libXext x11-libs/libXrandr x11-libs/libXcursor sys-libs/pam media-gfx/feh
+    x11-libs/libXScrnSaver x11-libs/libXext x11-libs/libXrandr x11-libs/libXcursor x11-libs/libxkbfile sys-libs/pam media-gfx/feh
 ```
 
 (Use `dev-lang/rust` instead of `rust-bin` to compile Rust yourself.)
@@ -129,14 +129,14 @@ sudo emerge --ask dev-lang/rust-bin dev-util/pkgconf \
 ### Arch Linux / Manjaro / EndeavourOS
 
 ```sh
-sudo pacman -S --needed base-devel rust libx11 libxft libxinerama libxss libxext libxrandr libxcursor pam feh
+sudo pacman -S --needed base-devel rust libx11 libxft libxinerama libxss libxext libxrandr libxcursor libxkbfile pam feh
 ```
 
 ### Debian / Ubuntu / Linux Mint / Pop!_OS
 
 ```sh
 sudo apt install build-essential pkg-config \
-    libx11-dev libxft-dev libxinerama-dev libxss-dev libxext-dev libxrandr-dev libxcursor-dev libpam0g-dev feh
+    libx11-dev libxft-dev libxinerama-dev libxss-dev libxext-dev libxrandr-dev libxcursor-dev libxkbfile-dev libpam0g-dev feh
 # Rust: the packaged version is usually too old, so use rustup (see above)
 ```
 
@@ -145,7 +145,7 @@ sudo apt install build-essential pkg-config \
 ```sh
 sudo dnf install gcc pkgconf-pkg-config rust cargo \
     libX11-devel libXft-devel libXinerama-devel libXScrnSaver-devel libXext-devel \
-    libXrandr-devel libXcursor-devel pam-devel feh
+    libXrandr-devel libXcursor-devel libxkbfile-devel pam-devel feh
 ```
 
 ### openSUSE
@@ -153,7 +153,7 @@ sudo dnf install gcc pkgconf-pkg-config rust cargo \
 ```sh
 sudo zypper install gcc pkg-config rust cargo \
     libX11-devel libXft-devel libXinerama-devel libXss-devel libXext-devel \
-    libXrandr-devel libXcursor-devel pam-devel feh
+    libXrandr-devel libXcursor-devel libxkbfile-devel pam-devel feh
 ```
 
 ### Void Linux
@@ -169,14 +169,14 @@ sudo xbps-install -S base-devel pkg-config rust cargo \
 ```sh
 sudo apk add build-base pkgconf rust cargo \
     libx11-dev libxft-dev libxinerama-dev libxscrnsaver-dev libxext-dev \
-    libxrandr-dev libxcursor-dev linux-pam-dev feh
+    libxrandr-dev libxcursor-dev libxkbfile-dev linux-pam-dev feh
 ```
 
 ### NixOS
 
 ```sh
 nix-shell -p cargo rustc pkg-config xorg.libX11 xorg.libXft xorg.libXinerama \
-    xorg.libXScrnSaver xorg.libXext xorg.libXrandr xorg.libXcursor pam feh
+    xorg.libXScrnSaver xorg.libXext xorg.libXrandr xorg.libXcursor xorg.libxkbfile pam feh
 ```
 
 ---
@@ -438,6 +438,58 @@ programs that are already open keep their size until you restart them. The curso
 apply to trwm's own cursor. Leave any of these unset to keep whatever your X server and
 `~/.Xresources` already set, so you won't need `xrdb` for these settings.
 
+### Keyboard
+
+Set your keyboard layout, key repeat and num lock in the config, instead of with
+`setxkbmap`, `xset r rate` and `numlockx` in `.xinitrc` (you don't need those tools installed):
+
+```lua
+keyboard = "fr",          -- just a layout
+
+-- or everything:
+keyboard = {
+  layout       = { "us", "fr" },        -- one or more layouts
+  variant      = { "", "azerty" },      -- one per layout ("" = the normal one)
+  options      = { "grp:alt_shift_toggle", "caps:escape" },
+  model        = "pc105",
+  repeat_delay = 300,                   -- ms before a held key starts repeating
+  repeat_rate  = 40,                    -- repeats per second
+  numlock      = true,                  -- num lock on at start
+},
+```
+
+- **Everything is optional.** Leave out what you don't want to change. Saving the config
+  applies the changes right away.
+- **Names:** every layout, variant and option, with a description, is listed in
+  `/usr/share/X11/xkb/rules/base.lst`. A typo shows an error in the bar instead of breaking
+  your keyboard.
+- **Several layouts:** switch with an XKB option like `grp:alt_shift_toggle` (Alt+Shift) or
+  `grp:win_space_toggle`, or with trwm keys:
+
+  ```lua
+  { "Mod+Ctrl+space", a.nextkeyboard() },     -- next layout
+  { "Mod+F1",         a.setkeyboard("us") },  -- a specific one (name or number)
+  ```
+
+- **Show the layout in the bar** with the `keymap` status component:
+  `{ "keymap", "%s | " }`.
+- **AZERTY and other layouts where the number row needs Shift:** `Mod+1` … `Mod+9` work
+  anyway. trwm matches keys by the physical key, so you don't need dwm's AZERTY patch.
+- **`trwm keyboard`** shows the current layout and what your config would set, without
+  changing anything. `trwm keyboard apply` applies the config's keyboard settings right away.
+
+Useful options:
+
+| option | does |
+|---|---|
+| `caps:escape` | Caps Lock is Escape (Vim users) |
+| `caps:ctrl_modifier` | Caps Lock is Ctrl |
+| `caps:swapescape` | swap Caps Lock and Escape |
+| `grp:alt_shift_toggle` | Alt+Shift switches layout |
+| `grp:win_space_toggle` | Super+Space switches layout (conflicts with `Mod+space` if your modkey is Super) |
+| `compose:ralt` | right Alt is the Compose key (type accents like `é` as Compose, `'`, `e`) |
+| `terminate:ctrl_alt_bksp` | Ctrl+Alt+Backspace kills the X server |
+
 ### Rules
 
 Rules put windows on certain tags or make them float. `class`, `instance` and `title` are
@@ -565,6 +617,7 @@ middle click.
 |---|---|---|
 | `default_layout` | `"spiral"` in the default config | the layout every tag starts with, see [Layouts](#layouts) |
 | `dpi` | unset | screen DPI for HiDPI screens, see [DPI and cursor](#dpi-and-cursor) |
+| `keyboard` | unset | keyboard layout, key repeat and num lock, see [Keyboard](#keyboard) |
 | `cursor_size` / `cursor_theme` | unset | mouse cursor size in px / theme name, see [DPI and cursor](#dpi-and-cursor) |
 | `showbar` / `topbar` | `true` / `true` | show the bar / put it at the top |
 | `hide_empty_tags` | `false` | only show tags that have windows |
@@ -606,7 +659,7 @@ status = {
 (`+` charging, `-` discharging, `o` full), `battery_remaining`, `temp` (path to a thermal file),
 `uptime`, `load_avg`, `disk_perc`, `disk_free`, `disk_used`, `disk_total` (path),
 `netspeed_rx`, `netspeed_tx`, `ipv4`, `wifi_perc` (interface), `kernel_release`, `hostname`,
-`username`, `num_files` (directory), `entropy`.
+`username`, `num_files` (directory), `entropy`, `keymap` (the active keyboard layout).
 
 **Instant updates:** add `trwm msg refresh` after a command so the bar updates right away,
 for example on a volume key:
@@ -706,6 +759,7 @@ and `0` means all tags.
 | `movemouse()` / `resizemouse()` | for mouse buttons |
 | `togglegaps()` / `defaultgaps()` / `incgaps(±n)` | gaps |
 | `wallpaper(path, mode)` | set the wallpaper |
+| `nextkeyboard(±1)` / `setkeyboard(name or number)` | switch keyboard layout, see [Keyboard](#keyboard) |
 | `refresh()` / `lock()` / `reload()` / `restart()` / `quit()` | |
 | `trwm.sh(cmd)` | run a command and return its output (blocking, so keep it quick) |
 | `trwm.sys.<builtin>(arg)` | status builtins, for example `trwm.sys.battery_perc("BAT0")` |
@@ -719,6 +773,7 @@ trwm                     run the window manager
 trwm lock                lock the screen
 trwm msg <lua|word>      send a command to the running trwm
 trwm status              print the status line once
+trwm keyboard [apply]    show the keyboard layout, or apply the config's keyboard settings
 trwm check               check the config for errors
 trwm default-config      print the built-in default config
 trwm -c FILE ...         use another config file
@@ -737,6 +792,8 @@ trwm --version
 | A key binding does nothing | run `xev` to check the key name, and `trwm check` for typos |
 | Can't unlock / the account got locked | install `extra/trwm.pam` (see [Screen locker](#screen-locker)). In an emergency, switch to a TTY (`Ctrl+Alt+F2`) and run `pkill -f "trwm lock"` |
 | Something crashed | start with `exec trwm 2> ~/.trwm.log` in `.xinitrc` and look at the log |
+| Wrong keyboard layout | set `keyboard = "fr"` (or your layout) in the config; `trwm keyboard` shows what is active |
+| `Mod+1`…`9` don't work on AZERTY | they should; if not, run `trwm keyboard` and check the layout is right |
 | Java apps show a grey window | add `export _JAVA_AWT_WM_NONREPARENTING=1` to `.xinitrc` |
 
 ## License

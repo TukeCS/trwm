@@ -44,9 +44,13 @@ pub const BUILTINS: &[&str] = &[
     "username",
     "num_files",
     "entropy",
+    "keymap",
 ];
 
 // state for the components that compute deltas between calls
+/// the active keyboard layout, kept up to date by the window manager
+pub static KEYMAP: Mutex<String> = Mutex::new(String::new());
+
 static CPU: Mutex<Option<(u64, u64)>> = Mutex::new(None);
 static NET: Mutex<Option<HashMap<String, (u64, Instant)>>> = Mutex::new(None);
 
@@ -257,6 +261,19 @@ pub fn builtin(name: &str, arg: Option<&str>) -> String {
         "username" => std::env::var("USER").ok(),
         "num_files" => std::fs::read_dir(crate::config::expand_tilde(a)).ok().map(|d| d.count().to_string()),
         "entropy" => read("/proc/sys/kernel/random/entropy_avail"),
+        "keymap" => {
+            let k = KEYMAP.lock().ok().map(|k| k.clone()).filter(|k| !k.is_empty());
+            k.or_else(|| unsafe {
+                // not running inside trwm (e.g. `trwm status`): ask the X server
+                let d = x11::xlib::XOpenDisplay(std::ptr::null());
+                if d.is_null() {
+                    return None;
+                }
+                let n = crate::keyboard::active_name(d);
+                x11::xlib::XCloseDisplay(d);
+                n
+            })
+        }
         _ => None,
     };
     r.unwrap_or_else(|| UNKNOWN.to_string())

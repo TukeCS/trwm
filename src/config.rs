@@ -62,6 +62,10 @@ pub enum Cmd {
     IncGaps(i32),
     Wallpaper(Option<String>, Option<String>),
     RefreshStatus,
+    /// cycle keyboard layouts by this many steps
+    NextKeyboard(i32),
+    /// switch to a keyboard layout by name ("fr") or number (1-based)
+    SetKeyboard(String),
     Lock,
     Reload,
     Restart,
@@ -223,6 +227,8 @@ pub struct Config {
     pub cursor_size: Option<u32>,
     /// mouse cursor theme (Xcursor.theme / XCURSOR_THEME)
     pub cursor_theme: Option<String>,
+    /// keyboard layout, key repeat and num lock
+    pub keyboard: crate::keyboard::KeyboardCfg,
     pub border_px: u32,
     pub snap: u32,
     pub gaps: Gaps,
@@ -350,6 +356,44 @@ fn layout_sel(v: &Value, what: &str) -> mlua::Result<LayoutSel> {
         Value::String(s) => LayoutSel::Name(s.to_string_lossy()),
         other => return Err(lerr(format!("{what}: bad layout {other:?}"))),
     })
+}
+
+/// A string or a list of strings -> "a,b,c".
+fn comma_list(v: Value, what: &str) -> mlua::Result<Option<String>> {
+    Ok(match v {
+        Value::Nil => None,
+        Value::String(s) => Some(s.to_string_lossy().split(',').map(str::trim).collect::<Vec<_>>().join(",")),
+        Value::Table(t) => {
+            let parts = t.sequence_values::<String>().collect::<mlua::Result<Vec<_>>>()?;
+            Some(crate::keyboard::join(&parts))
+        }
+        o => return Err(lerr(format!("keyboard.{what}: expected a string or a list, got {o:?}"))),
+    })
+}
+
+/// `keyboard = "fr"` or `keyboard = { layout = ..., variant = ..., ... }`
+fn parse_keyboard(v: Value) -> mlua::Result<crate::keyboard::KeyboardCfg> {
+    use crate::keyboard::KeyboardCfg;
+    match v {
+        Value::Nil => Ok(KeyboardCfg::default()),
+        Value::String(_) => Ok(KeyboardCfg { layout: comma_list(v, "layout")?, ..Default::default() }),
+        Value::Table(t) => {
+            let cfg = KeyboardCfg {
+                layout: comma_list(t.get("layout")?, "layout")?,
+                variant: comma_list(t.get("variant")?, "variant")?,
+                model: t.get("model")?,
+                options: comma_list(t.get("options")?, "options")?,
+                repeat_delay: t.get("repeat_delay")?,
+                repeat_rate: t.get("repeat_rate")?,
+                numlock: t.get("numlock")?,
+            };
+            if cfg.layout.as_deref() == Some("") {
+                return Err(lerr("keyboard.layout: empty"));
+            }
+            Ok(cfg)
+        }
+        o => Err(lerr(format!("keyboard: expected a layout like \"fr\" or a table, got {o:?}"))),
+    }
 }
 
 fn spawn_arg(v: &Value) -> mlua::Result<Spawn> {
@@ -502,6 +546,8 @@ fn install_api(lua: &Lua, queue: &Queue, dir: &Path) -> mlua::Result<()> {
     cmd!("incgaps", |v| Cmd::IncGaps(int_arg(&a0(&v), 1) as i32));
     cmd!("wallpaper", |v| Cmd::Wallpaper(str_of(&a0(&v)), str_of(&a1(&v))));
     cmd!("refresh", |_v| Cmd::RefreshStatus);
+    cmd!("nextkeyboard", |v| Cmd::NextKeyboard(int_arg(&a0(&v), 1) as i32));
+    cmd!("setkeyboard", |v| Cmd::SetKeyboard(str_of(&a0(&v)).ok_or_else(|| lerr("setkeyboard: expected a layout name like \"fr\" or a number"))?));
     cmd!("lock", |_v| Cmd::Lock);
     cmd!("reload", |_v| Cmd::Reload);
     cmd!("restart", |_v| Cmd::Restart);
@@ -830,6 +876,7 @@ impl Config {
             dpi,
             cursor_size,
             cursor_theme: t.get("cursor_theme")?,
+            keyboard: parse_keyboard(t.get("keyboard")?)?,
             border_px: get(t, "borderpx", 1)?,
             snap: get(t, "snap", 32)?,
             gaps,
@@ -906,6 +953,21 @@ mod tests {
         assert_eq!(Config::from_source("return { dpi = 144 }", "t", None).unwrap().dpi, Some(144));
         assert_eq!(Config::from_source("return {}", "t", None).unwrap().dpi, None);
         assert!(Config::from_source("return { cursor_size = 2 }", "t", None).is_err());
+        // keyboard: shorthand, lists and strings
+        let k = Config::from_source("return { keyboard = 'fr' }", "t", None).unwrap().keyboard;
+        assert_eq!(k.layout.as_deref(), Some("fr"));
+        let k = Config::from_source(
+            "return { keyboard = { layout = { 'us', 'fr' }, variant = { '', 'azerty' }, options = 'caps:escape, grp:alt_shift_toggle', repeat_rate = 40, numlock = true } }",
+            "t",
+            None,
+        )
+        .unwrap()
+        .keyboard;
+        assert_eq!(k.layout.as_deref(), Some("us,fr"));
+        assert_eq!(k.variant.as_deref(), Some(",azerty"));
+        assert_eq!(k.options.as_deref(), Some("caps:escape,grp:alt_shift_toggle"));
+        assert_eq!((k.repeat_rate, k.numlock, k.repeat_delay), (Some(40), Some(true), None));
+        assert!(Config::from_source("return { keyboard = 5 }", "t", None).is_err());
         // default_layout picks by name or symbol, regardless of list order
         let l = "layouts = { {'[]=','tile'}, {'S','spiral'}, {'><>','float'} }";
         assert_eq!(Config::from_source(&format!("return {{ {l} }}"), "t", None).unwrap().default_layout, 0);
