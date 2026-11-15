@@ -5,6 +5,10 @@ in Rust. It includes its own **status bar** (like slstatus) and **screen locker*
 (like slock), and it is configured in **Lua**. Changes apply as soon as you save
 the config file.
 
+![trwm with the example config: purple bar with icon tags and status, two kitty terminals tiled with gaps](screenshot.png)
+
+<sub>tuke's setup: [`examples/tuke.lua`](examples/tuke.lua)</sub>
+
 ---
 
 ## Quick start (the 2-minute version)
