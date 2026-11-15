@@ -6,6 +6,7 @@
 
 #![allow(unsafe_op_in_unsafe_fn, clippy::missing_safety_doc)]
 
+mod bsp;
 mod config;
 mod drw;
 mod lock;

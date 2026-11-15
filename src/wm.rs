@@ -14,6 +14,7 @@ use std::time::{Duration, Instant, SystemTime};
 use x11::xlib::{self, Atom, Window};
 use x11::{xcursor, xinerama, xrandr, xss};
 
+use crate::bsp;
 use crate::config::{self, Click, Cmd, Config, Gaps, LayoutKind, LayoutSel, Spawn};
 use crate::drw::{Drw, Scheme};
 use crate::status::Status;
@@ -226,6 +227,8 @@ pub struct WindowManager {
     running: bool,
     restart: bool,
     scanning: bool,
+    /// dwindle layout trees, per monitor and set of viewed tags
+    trees: HashMap<(usize, u32), bsp::Node>,
 }
 
 const WITHDRAWN_STATE: c_long = 0;
@@ -315,6 +318,7 @@ impl WindowManager {
                 wallpaper_next: None,
                 running: true,
                 scanning: false,
+                trees: HashMap::new(),
                 restart: false,
             };
             wm.drw.resize(sw as u32, wm.bh as u32);
@@ -2360,7 +2364,7 @@ impl WindowManager {
             LayoutKind::BStack => self.bstack(m),
             LayoutKind::Grid => self.grid(m),
             LayoutKind::Deck => self.deck(m),
-            LayoutKind::Dwindle => self.fibonacci(m, false),
+            LayoutKind::Dwindle => self.dwindle(m),
             LayoutKind::Spiral => self.fibonacci(m, true),
             LayoutKind::Float => {}
         }
@@ -2540,6 +2544,78 @@ impl WindowManager {
         }
     }
 
+    fn tree_key(&self, m: usize) -> (usize, u32) {
+        (m, self.mons[m].tagset[self.mons[m].seltags])
+    }
+
+    /// Hyprland-style dwindle: a tree where a new window splits the window
+    /// under the cursor (or the last focused one), on the cursor's side.
+    unsafe fn dwindle(&mut self, m: usize) {
+        let (oh, ov, ih, iv, n) = self.getgaps(m);
+        let key = self.tree_key(m);
+        let tiled = self.tiled(m);
+
+        // forget windows that are gone (closed, floated, moved to another tag)
+        let mut tree = self.trees.remove(&key);
+        if let Some(t) = &tree {
+            let mut leaves = vec![];
+            t.leaves(&mut leaves);
+            for l in leaves {
+                if !tiled.contains(&l) {
+                    tree = tree.and_then(|t| t.remove(l));
+                }
+            }
+        }
+        if n == 0 {
+            return;
+        }
+
+        // add new windows, oldest first (the client list has the newest first)
+        let pointer = self.getrootptr();
+        let mut added: Vec<Window> = vec![];
+        for &w in tiled.iter().rev() {
+            match tree.as_mut() {
+                None => tree = Some(bsp::Node::Leaf(w)),
+                Some(t) if t.contains(w) => continue,
+                Some(t) => {
+                    let mut leaves = vec![];
+                    t.leaves(&mut leaves);
+                    // windows whose position on screen is known
+                    let placed: Vec<Window> = leaves.iter().copied().filter(|l| !added.contains(l)).collect();
+                    let rect = |l: Window| {
+                        let c = &self.clients[&l];
+                        (c.x, c.y, c.width(), c.height())
+                    };
+                    let under = pointer.and_then(|(px, py)| {
+                        placed.iter().copied().find(|&l| {
+                            let (x, y, ww, hh) = rect(l);
+                            px >= x && px < x + ww && py >= y && py < y + hh
+                        })
+                    });
+                    let target = under
+                        .or_else(|| self.mons[m].stack.iter().copied().find(|s| *s != w && placed.contains(s)))
+                        .unwrap_or(*leaves.last().unwrap());
+                    let first = match (under, pointer) {
+                        (Some(u), Some((px, py))) => bsp::first_half(rect(u), px, py),
+                        _ => false,
+                    };
+                    t.insert(target, w, first);
+                }
+            }
+            added.push(w);
+        }
+
+        let Some(tree) = tree else { return };
+        let mon = &self.mons[m];
+        let area = (mon.wx + ov, mon.wy + oh, mon.ww - 2 * ov, mon.wh - 2 * oh);
+        let mut rects = vec![];
+        tree.layout(area, ih, iv, &mut rects);
+        self.trees.insert(key, tree);
+        for (w, (x, y, ww, hh)) in rects {
+            self.place(w, x, y, ww, hh);
+        }
+    }
+
     /// Fibonacci layouts (see [`fibonacci_rects`]).
     unsafe fn fibonacci(&mut self, m: usize, spiral: bool) {
         let (oh, ov, ih, iv, n) = self.getgaps(m);
@@ -2711,6 +2787,17 @@ impl WindowManager {
         if !self.arranges(m) {
             return;
         }
+        // dwindle: move the split next to the focused window instead
+        if self.cur_layout(m) == LayoutKind::Dwindle {
+            let key = self.tree_key(m);
+            if let (Some(sel), Some(t)) = (self.mons[m].sel, self.trees.get_mut(&key)) {
+                let (d, abs) = if f < 1.0 { (f, false) } else { (f - 1.0, true) };
+                if t.resize(sel, d, abs) {
+                    self.arrange(Some(m));
+                }
+            }
+            return;
+        }
         // values >= 1.0 set the factor absolutely (1.55 -> 0.55), like dwm
         let mon = &mut self.mons[m];
         let new = if f < 1.0 { f + mon.mfact } else { f - 1.0 };
@@ -2725,6 +2812,20 @@ impl WindowManager {
         let m = self.selmon;
         let Some(sel) = self.mons[m].sel else { return };
         if !self.arranges(m) || self.clients[&sel].isfloating {
+            return;
+        }
+        // dwindle: swap with the first window in the tree
+        if self.cur_layout(m) == LayoutKind::Dwindle {
+            let key = self.tree_key(m);
+            if let Some(t) = self.trees.get_mut(&key) {
+                let mut leaves = vec![];
+                t.leaves(&mut leaves);
+                let other = if leaves.first() == Some(&sel) { leaves.get(1).copied() } else { leaves.first().copied() };
+                if let Some(o) = other {
+                    t.swap(sel, o);
+                    self.arrange(Some(m));
+                }
+            }
             return;
         }
         let tiled = self.tiled(m);
@@ -2900,6 +3001,10 @@ impl WindowManager {
             if let (Some(a), Some(b)) = (list.iter().position(|w| *w == sel), list.iter().position(|w| *w == t)) {
                 if to == from {
                     list.swap(a, b);
+                    let key = (to, self.mons[to].tagset[self.mons[to].seltags]);
+                    if let Some(tree) = self.trees.get_mut(&key) {
+                        tree.swap(sel, t);
+                    }
                 } else {
                     let w = list.remove(a);
                     let b = list.iter().position(|w| *w == t).unwrap_or(b);

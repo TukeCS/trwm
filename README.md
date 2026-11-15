@@ -71,8 +71,8 @@ in the bar.
 - **dwm-style tiling:** tags, master/stack layout, monocle, floating windows,
   multiple monitors (Xinerama), urgency hints, fullscreen (EWMH), dialogs float automatically,
   and you can move/resize windows with the mouse (with edge snapping)
-- **More layouts:** `dwindle` and `spiral` (Fibonacci, like Hyprland), `bstack` (master on
-  top), `grid`, `deck`
+- **More layouts:** `dwindle` (like Hyprland: new windows split the window under the cursor),
+  `spiral` (Fibonacci), `bstack` (master on top), `grid`, `deck`
 - **Auto-tiling helpers:** `retile` puts every window you floated back into the tiling, and
   `drag_tiled = "swap"` lets you drag tiled windows to swap them instead of floating them
 - **Gaps:** on by default. Change them live with `Mod+=` / `Mod+-`. With "smart gaps",
@@ -456,13 +456,14 @@ The first layout in the list is the default. Available layouts:
 | `bstack` | master on top, the rest side by side below |
 | `grid` | everything in an even grid |
 | `deck` | master on the left, the rest on top of each other on the right |
-| `dwindle` | Fibonacci, like Hyprland: each new window splits the last one, along its longer side (`fibonacci` works as a name too) |
+| `dwindle` | like Hyprland: a new window splits the window under the cursor (or the last focused one) in two, on the side the cursor is on. Wide spaces split side by side, tall ones top/bottom. Closing a window gives its space back to its neighbour (`fibonacci` works as a name too) |
 | `spiral` | Fibonacci that spirals inwards: left, top, right, bottom, … |
 
 The bar shows the symbol of the current layout next to the tags.
 
-`mfact` (`Mod+h` / `Mod+l`) sets the size of the first window in every layout. In
-`dwindle` and `spiral`, the following splits are always half and half.
+`mfact` (`Mod+h` / `Mod+l`) sets the size of the first window. In `spiral`, the following
+splits are always half and half. In `dwindle`, `Mod+h` / `Mod+l` move the split next to the
+focused window instead, and `Mod+Shift+Return` swaps it with the first window.
 
 ```lua
 layouts = {
