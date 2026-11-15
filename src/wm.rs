@@ -16,6 +16,7 @@ use x11::{xcursor, xinerama, xrandr, xss};
 
 use crate::bsp;
 use crate::keyboard;
+use crate::{input, outputs, screen};
 use crate::config::{self, Click, Cmd, Config, Gaps, LayoutKind, LayoutSel, Spawn};
 use crate::drw::{Drw, Scheme};
 use crate::status::Status;
@@ -232,6 +233,12 @@ pub struct WindowManager {
     trees: HashMap<(usize, u32), bsp::Node>,
     /// keycode of each entry in cfg.keys (0 = key not on this keyboard)
     keycodes: Vec<xlib::KeyCode>,
+    /// XInput opcode / RandR event base, for hotplug events
+    xi_opcode: Option<c_int>,
+    rr_event_base: Option<c_int>,
+    /// a mouse or monitor was plugged in: apply the settings on the next tick
+    input_pending: bool,
+    monitors_pending: bool,
 }
 
 const WITHDRAWN_STATE: c_long = 0;
@@ -323,6 +330,10 @@ impl WindowManager {
                 scanning: false,
                 trees: HashMap::new(),
                 keycodes: Vec::new(),
+                xi_opcode: None,
+                rr_event_base: None,
+                input_pending: false,
+                monitors_pending: false,
                 restart: false,
             };
             wm.drw.resize(sw as u32, wm.bh as u32);
@@ -376,6 +387,11 @@ impl WindowManager {
         xlib::XChangeWindowAttributes(dpy, self.root, xlib::CWEventMask | xlib::CWCursor, &mut wa);
         xlib::XSelectInput(dpy, self.root, wa.event_mask);
         self.apply_keyboard();
+        self.apply_monitors();
+        screen::apply(self.dpy, &self.cfg.screen);
+        input::apply(self.dpy, &self.cfg.input);
+        self.xi_opcode = input::watch_hotplug(self.dpy, self.root);
+        self.rr_event_base = outputs::watch_hotplug(self.dpy, self.root);
         self.grabkeys();
         self.focus(None);
 
@@ -441,6 +457,17 @@ impl WindowManager {
         self.children.retain_mut(|c| !matches!(c.try_wait(), Ok(Some(_)) | Err(_)));
         // the layout can also be switched by an XKB hotkey (grp:alt_shift_toggle)
         self.update_keymap();
+        // something was plugged in
+        if std::mem::take(&mut self.input_pending) {
+            input::apply(self.dpy, &self.cfg.input);
+            // a new keyboard gets the default repeat rate and num lock state
+            if self.cfg.keyboard.repeat_rate.is_some() || self.cfg.keyboard.repeat_delay.is_some() || self.cfg.keyboard.numlock.is_some() {
+                let _ = keyboard::apply(self.dpy, &crate::keyboard::KeyboardCfg { layout: None, variant: None, model: None, options: None, ..self.cfg.keyboard.clone() });
+            }
+        }
+        if std::mem::take(&mut self.monitors_pending) {
+            self.apply_monitors();
+        }
         if let Some(c) = &mut self.lock_child
             && !matches!(c.try_wait(), Ok(None)) {
                 self.lock_child = None;
@@ -657,6 +684,15 @@ impl WindowManager {
         if old.dpi != self.cfg.dpi {
             self.apply_dpi();
         }
+        if old.monitors != self.cfg.monitors {
+            self.apply_monitors();
+        }
+        if old.screen != self.cfg.screen {
+            screen::apply(self.dpy, &self.cfg.screen);
+        }
+        if old.input != self.cfg.input {
+            input::apply(self.dpy, &self.cfg.input);
+        }
         if old.keyboard != self.cfg.keyboard {
             self.apply_keyboard();
         }
@@ -731,6 +767,20 @@ impl WindowManager {
                     } else {
                         self.unmanage(e.window, false);
                     }
+                }
+            }
+            t if t == xlib::GenericEvent => {
+                // XInput: a mouse, touchpad or keyboard was plugged in or removed
+                let c = &ev.generic_event_cookie;
+                if Some(c.extension) == self.xi_opcode && c.evtype == x11::xinput2::XI_HierarchyChanged {
+                    self.input_pending = true;
+                }
+            }
+            t if self.rr_event_base.is_some_and(|b| t == b + x11::xrandr::RRNotify) => {
+                // RandR: a monitor was plugged in or removed
+                let e = &*(ev as *const xlib::XEvent as *const x11::xrandr::XRRNotifyEvent);
+                if e.subtype == x11::xrandr::RRNotify_OutputChange {
+                    self.monitors_pending = true;
                 }
             }
             _ => {}
@@ -944,6 +994,13 @@ impl WindowManager {
         match cmd.spawn() {
             Ok(c) => self.lock_child = Some(c),
             Err(e) => self.show_error(format!("lock: {e}")),
+        }
+    }
+
+    /// `monitors = { ... }`: arrange the monitors (does nothing if they already match).
+    unsafe fn apply_monitors(&mut self) {
+        if let Err(e) = outputs::apply(self.dpy, self.root, self.screen, &self.cfg.monitors, self.cfg.dpi) {
+            self.show_error(e);
         }
     }
 
@@ -1900,6 +1957,10 @@ impl WindowManager {
         let dirty = self.sw != e.width || self.sh != e.height;
         self.sw = e.width;
         self.sh = e.height;
+        if dirty {
+            // the screen size changed (monitor arrangement): keep the DPI
+            self.apply_dpi();
+        }
         if self.updategeom() || dirty {
             self.drw.resize(self.sw as u32, self.bh as u32);
             for m in 0..self.mons.len() {

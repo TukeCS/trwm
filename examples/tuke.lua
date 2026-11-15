@@ -124,6 +124,7 @@ return {
   modkey   = "Super",                 -- what "Mod" means in keys/buttons
   fonts    = { "monospace:size=12", "Symbols Nerd Font Mono:size=13" },
   dpi      = 144,                 -- screen DPI (replaces `xrandr --dpi 144` in .xinitrc)
+  screen      = { blank = false, off = false },  -- never blank (was `xset s off -dpms`)
   cursor_size = 36,               -- mouse cursor size (replaces Xcursor.size in ~/.Xresources)
   -- cursor_theme = "Adwaita",
 

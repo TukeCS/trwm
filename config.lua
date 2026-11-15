@@ -83,6 +83,15 @@ return {
   -- cursor_size  = 24,               -- mouse cursor size in pixels (like Xcursor.size)
   -- cursor_theme = "Adwaita",        -- mouse cursor theme (like Xcursor.theme)
 
+  -- mouse / touchpad (see `trwm input`) and monitors (see `trwm monitors`)
+  -- mouse    = { speed = 0.0, accel = "flat", natural_scroll = false },
+  -- touchpad = { tap = true, natural_scroll = true, disable_while_typing = true },
+  -- monitors = {
+  --   { output = "eDP-1",  primary = true },
+  --   { output = "HDMI-1", mode = "1920x1080", rate = 144, right_of = "eDP-1" },
+  -- },
+  -- screen   = { blank = 600, off = 900 },   -- seconds, or false = never
+
   -- keyboard layout, key repeat and num lock (instead of setxkbmap, xset r rate
   -- and numlockx). Leave out what you don't want to change. All layouts and
   -- options are listed in /usr/share/X11/xkb/rules/base.lst

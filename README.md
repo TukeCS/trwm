@@ -98,7 +98,7 @@ To **build** trwm you need:
 |---|---|
 | Rust **1.88 or newer** + cargo | the compiler |
 | a C compiler + pkg-config | trwm builds Lua 5.4 from source, so you don't need Lua installed |
-| libX11, libXft, libXinerama, libXss, libXext, libXrandr, libXcursor, libxkbfile | X11, fonts, multi-monitor, idle detection, DPMS, DPI, cursors, keyboard layouts |
+| libX11, libXft, libXinerama, libXss, libXext, libXrandr, libXcursor, libxkbfile, libXi | X11, fonts, multi-monitor, idle detection, DPMS, DPI, cursors, keyboard layouts, mouse/touchpad settings |
 | PAM (development files) | the screen locker checks your password with it |
 
 **At runtime** it uses:
@@ -121,7 +121,7 @@ You can swap kitty and rofi for any other programs in the config.
 ```sh
 sudo emerge --ask dev-lang/rust-bin dev-util/pkgconf \
     x11-libs/libX11 x11-libs/libXft x11-libs/libXinerama \
-    x11-libs/libXScrnSaver x11-libs/libXext x11-libs/libXrandr x11-libs/libXcursor x11-libs/libxkbfile sys-libs/pam media-gfx/feh
+    x11-libs/libXScrnSaver x11-libs/libXext x11-libs/libXrandr x11-libs/libXcursor x11-libs/libxkbfile x11-libs/libXi sys-libs/pam media-gfx/feh
 ```
 
 (Use `dev-lang/rust` instead of `rust-bin` to compile Rust yourself.)
@@ -129,14 +129,14 @@ sudo emerge --ask dev-lang/rust-bin dev-util/pkgconf \
 ### Arch Linux / Manjaro / EndeavourOS
 
 ```sh
-sudo pacman -S --needed base-devel rust libx11 libxft libxinerama libxss libxext libxrandr libxcursor libxkbfile pam feh
+sudo pacman -S --needed base-devel rust libx11 libxft libxinerama libxss libxext libxrandr libxcursor libxkbfile libxi pam feh
 ```
 
 ### Debian / Ubuntu / Linux Mint / Pop!_OS
 
 ```sh
 sudo apt install build-essential pkg-config \
-    libx11-dev libxft-dev libxinerama-dev libxss-dev libxext-dev libxrandr-dev libxcursor-dev libxkbfile-dev libpam0g-dev feh
+    libx11-dev libxft-dev libxinerama-dev libxss-dev libxext-dev libxrandr-dev libxcursor-dev libxkbfile-dev libxi-dev libpam0g-dev feh
 # Rust: the packaged version is usually too old, so use rustup (see above)
 ```
 
@@ -145,7 +145,7 @@ sudo apt install build-essential pkg-config \
 ```sh
 sudo dnf install gcc pkgconf-pkg-config rust cargo \
     libX11-devel libXft-devel libXinerama-devel libXScrnSaver-devel libXext-devel \
-    libXrandr-devel libXcursor-devel libxkbfile-devel pam-devel feh
+    libXrandr-devel libXcursor-devel libxkbfile-devel libXi-devel pam-devel feh
 ```
 
 ### openSUSE
@@ -153,7 +153,7 @@ sudo dnf install gcc pkgconf-pkg-config rust cargo \
 ```sh
 sudo zypper install gcc pkg-config rust cargo \
     libX11-devel libXft-devel libXinerama-devel libXss-devel libXext-devel \
-    libXrandr-devel libXcursor-devel libxkbfile-devel pam-devel feh
+    libXrandr-devel libXcursor-devel libxkbfile-devel libXi-devel pam-devel feh
 ```
 
 ### Void Linux
@@ -169,14 +169,14 @@ sudo xbps-install -S base-devel pkg-config rust cargo \
 ```sh
 sudo apk add build-base pkgconf rust cargo \
     libx11-dev libxft-dev libxinerama-dev libxscrnsaver-dev libxext-dev \
-    libxrandr-dev libxcursor-dev libxkbfile-dev linux-pam-dev feh
+    libxrandr-dev libxcursor-dev libxkbfile-dev libxi-dev linux-pam-dev feh
 ```
 
 ### NixOS
 
 ```sh
 nix-shell -p cargo rustc pkg-config xorg.libX11 xorg.libXft xorg.libXinerama \
-    xorg.libXScrnSaver xorg.libXext xorg.libXrandr xorg.libXcursor xorg.libxkbfile pam feh
+    xorg.libXScrnSaver xorg.libXext xorg.libXrandr xorg.libXcursor xorg.libxkbfile xorg.libXi pam feh
 ```
 
 ---
@@ -490,6 +490,77 @@ Useful options:
 | `compose:ralt` | right Alt is the Compose key (type accents like `é` as Compose, `'`, `e`) |
 | `terminate:ctrl_alt_bksp` | Ctrl+Alt+Backspace kills the X server |
 
+### Mouse and touchpad
+
+Pointer speed, acceleration, natural scrolling, tap-to-click and more, instead of
+`xinput set-prop` commands. `mouse` applies to every mouse and `touchpad` to every touchpad,
+including ones plugged in later:
+
+```lua
+mouse = {
+  speed            = 0.0,          -- -1.0 (slowest) to 1.0 (fastest)
+  accel            = "flat",       -- "flat" (no acceleration, gamers) or "adaptive"
+  natural_scroll   = false,
+  left_handed      = false,
+  middle_emulation = false,        -- left+right together = middle click
+},
+touchpad = {
+  tap                  = true,     -- tap to click
+  natural_scroll       = true,     -- scroll like on a phone
+  disable_while_typing = true,
+  speed                = 0.3,
+},
+```
+
+Everything is optional. These settings need the **libinput** X driver, which is the default
+on almost every distro; `trwm input` lists your devices and their current settings.
+
+### Monitors
+
+Resolution, refresh rate and arrangement, instead of `xrandr` commands. Run `trwm monitors`
+to see the names of your outputs and the modes they support:
+
+```lua
+monitors = {
+  { output = "eDP-1",  mode = "2560x1600", rate = 240, primary = true },
+  { output = "HDMI-1", mode = "1920x1080", rate = 144, right_of = "eDP-1" },
+  { output = "DP-1",   off = true },
+},
+```
+
+| field | meaning |
+|---|---|
+| `output` | the output name from `trwm monitors` (required) |
+| `mode` | resolution like `"1920x1080"`; leave out for the monitor's preferred one |
+| `rate` | refresh rate in Hz; leave out for the highest one |
+| `right_of` / `left_of` / `above` / `below` | place it next to another output |
+| `same_as` | mirror another output |
+| `pos` | exact position, like `"1920x0"` or `{ 1920, 0 }` |
+| `primary` | the primary monitor (some games and apps open there) |
+| `rotate` | `"normal"`, `"left"`, `"right"` or `"inverted"` |
+| `off` | switch this output off |
+
+- **Hotplug:** when you plug a monitor in, trwm applies its settings automatically. A
+  monitor that's unplugged is switched off, so no windows get lost on it.
+- **Only listed outputs change.** Outputs that aren't in the list stay as they are.
+- **No flicker:** if the monitors already match the config, nothing is touched, so saving
+  the config doesn't make your screen blink.
+- **Your DPI setting stays** when the screen size changes.
+
+### Screen blanking
+
+When the screen blanks and when the monitor turns off, instead of `xset s` / `xset dpms`:
+
+```lua
+screen = {
+  blank = 600,       -- blank after 10 minutes without input (false = never)
+  off   = 900,       -- switch the monitor off after 15 minutes (false = never)
+},
+```
+
+`screen = { blank = false, off = false }` is the same as `xset s off -dpms`. If you use
+`xss-lock -- trwm lock`, the screen locks when it blanks.
+
 ### Rules
 
 Rules put windows on certain tags or make them float. `class`, `instance` and `title` are
@@ -617,6 +688,9 @@ middle click.
 |---|---|---|
 | `default_layout` | `"spiral"` in the default config | the layout every tag starts with, see [Layouts](#layouts) |
 | `dpi` | unset | screen DPI for HiDPI screens, see [DPI and cursor](#dpi-and-cursor) |
+| `mouse` / `touchpad` | unset | pointer speed, acceleration, scrolling, tapping, see [Mouse and touchpad](#mouse-and-touchpad) |
+| `monitors` | unset | resolution, refresh rate and arrangement, see [Monitors](#monitors) |
+| `screen` | unset | screen blanking and monitor power saving, see [Screen blanking](#screen-blanking) |
 | `keyboard` | unset | keyboard layout, key repeat and num lock, see [Keyboard](#keyboard) |
 | `cursor_size` / `cursor_theme` | unset | mouse cursor size in px / theme name, see [DPI and cursor](#dpi-and-cursor) |
 | `showbar` / `topbar` | `true` / `true` | show the bar / put it at the top |
@@ -774,6 +848,9 @@ trwm lock                lock the screen
 trwm msg <lua|word>      send a command to the running trwm
 trwm status              print the status line once
 trwm keyboard [apply]    show the keyboard layout, or apply the config's keyboard settings
+trwm input [apply]       list mice/touchpads and their settings, or apply the config's
+trwm monitors [apply]    list monitors (names and modes), or apply the config's monitor
+                         and screen settings
 trwm check               check the config for errors
 trwm default-config      print the built-in default config
 trwm -c FILE ...         use another config file
@@ -792,6 +869,9 @@ trwm --version
 | A key binding does nothing | run `xev` to check the key name, and `trwm check` for typos |
 | Can't unlock / the account got locked | install `extra/trwm.pam` (see [Screen locker](#screen-locker)). In an emergency, switch to a TTY (`Ctrl+Alt+F2`) and run `pkill -f "trwm lock"` |
 | Something crashed | start with `exec trwm 2> ~/.trwm.log` in `.xinitrc` and look at the log |
+| Touchpad doesn't tap / scroll the wrong way | set `touchpad = { tap = true, natural_scroll = ... }`; `trwm input` shows what's active |
+| External monitor stays black | add it to `monitors` (names from `trwm monitors`), e.g. `{ output = "HDMI-1", right_of = "eDP-1" }` |
+| Screen turns off by itself | `screen = { blank = false, off = false }` |
 | Wrong keyboard layout | set `keyboard = "fr"` (or your layout) in the config; `trwm keyboard` shows what is active |
 | `Mod+1`…`9` don't work on AZERTY | they should; if not, run `trwm keyboard` and check the layout is right |
 | Java apps show a grey window | add `export _JAVA_AWT_WM_NONREPARENTING=1` to `.xinitrc` |

@@ -229,6 +229,12 @@ pub struct Config {
     pub cursor_theme: Option<String>,
     /// keyboard layout, key repeat and num lock
     pub keyboard: crate::keyboard::KeyboardCfg,
+    /// screen blanking / monitor power saving
+    pub screen: crate::screen::ScreenCfg,
+    /// mouse and touchpad settings
+    pub input: crate::input::InputCfg,
+    /// monitor arrangement
+    pub monitors: Vec<crate::outputs::MonitorCfg>,
     pub border_px: u32,
     pub snap: u32,
     pub gaps: Gaps,
@@ -356,6 +362,21 @@ fn layout_sel(v: &Value, what: &str) -> mlua::Result<LayoutSel> {
         Value::String(s) => LayoutSel::Name(s.to_string_lossy()),
         other => return Err(lerr(format!("{what}: bad layout {other:?}"))),
     })
+}
+
+/// `screen = { blank = 600 | false, off = 900 | false }`
+fn parse_screen(t: Option<Table>) -> mlua::Result<crate::screen::ScreenCfg> {
+    let Some(t) = t else { return Ok(Default::default()) };
+    let secs = |k: &str| -> mlua::Result<Option<u32>> {
+        Ok(match t.get::<Value>(k)? {
+            Value::Nil => None,
+            Value::Boolean(false) => Some(0),
+            Value::Integer(n) if n >= 0 => Some(n as u32),
+            Value::Number(n) if n >= 0.0 => Some(n as u32),
+            o => return Err(lerr(format!("screen.{k}: expected seconds or false, got {o:?}"))),
+        })
+    };
+    Ok(crate::screen::ScreenCfg { blank: secs("blank")?, off: secs("off")? })
 }
 
 /// A string or a list of strings -> "a,b,c".
@@ -877,6 +898,12 @@ impl Config {
             cursor_size,
             cursor_theme: t.get("cursor_theme")?,
             keyboard: parse_keyboard(t.get("keyboard")?)?,
+            screen: parse_screen(t.get("screen")?)?,
+            input: crate::input::InputCfg {
+                mouse: crate::input::parse(t.get("mouse")?, "mouse")?,
+                touchpad: crate::input::parse(t.get("touchpad")?, "touchpad")?,
+            },
+            monitors: crate::outputs::parse(t.get("monitors")?)?,
             border_px: get(t, "borderpx", 1)?,
             snap: get(t, "snap", 32)?,
             gaps,
@@ -968,6 +995,26 @@ mod tests {
         assert_eq!(k.options.as_deref(), Some("caps:escape,grp:alt_shift_toggle"));
         assert_eq!((k.repeat_rate, k.numlock, k.repeat_delay), (Some(40), Some(true), None));
         assert!(Config::from_source("return { keyboard = 5 }", "t", None).is_err());
+        // screen, mouse, touchpad, monitors
+        let c = Config::from_source(
+            "return { screen = { blank = false, off = 600 }, mouse = { accel = 'flat', speed = -0.5 }, touchpad = { tap = true, natural_scroll = true },
+               monitors = { { output = 'HDMI-1', mode = '1920x1080', rate = 144, right_of = 'eDP-1', primary = true }, { output = 'DP-1', off = true } } }",
+            "t",
+            None,
+        )
+        .unwrap();
+        assert_eq!((c.screen.blank, c.screen.off), (Some(0), Some(600)));
+        assert_eq!((c.input.mouse.accel.as_deref(), c.input.mouse.speed), (Some("flat"), Some(-0.5)));
+        assert_eq!((c.input.touchpad.tap, c.input.touchpad.natural_scroll, c.input.mouse.tap), (Some(true), Some(true), None));
+        assert_eq!(c.monitors.len(), 2);
+        assert_eq!(c.monitors[0].mode, Some((1920, 1080)));
+        assert_eq!(c.monitors[0].pos, crate::outputs::Pos::RightOf("eDP-1".into()));
+        assert!(c.monitors[1].off);
+        assert!(Config::from_source("return { mouse = { accel = 'fast' } }", "t", None).is_err());
+        assert!(Config::from_source("return { mouse = { speed = 3 } }", "t", None).is_err());
+        assert!(Config::from_source("return { monitors = { { output = 'X', mode = '1080p' } } }", "t", None).is_err());
+        assert!(Config::from_source("return { monitors = { { output = 'X', rotate = 'sideways' } } }", "t", None).is_err());
+        assert!(Config::from_source("return { screen = { blank = true } }", "t", None).is_err());
         // default_layout picks by name or symbol, regardless of list order
         let l = "layouts = { {'[]=','tile'}, {'S','spiral'}, {'><>','float'} }";
         assert_eq!(Config::from_source(&format!("return {{ {l} }}"), "t", None).unwrap().default_layout, 0);

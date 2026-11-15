@@ -9,6 +9,9 @@
 mod bsp;
 mod config;
 mod drw;
+mod input;
+mod outputs;
+mod screen;
 mod keyboard;
 mod lock;
 mod pam;
@@ -31,6 +34,9 @@ commands:
   status            print the status line once and exit
   keyboard [apply]  show the keyboard layout (and what the config sets), or
                     apply the config's keyboard settings now
+  input [apply]     list mice/touchpads and their settings, or apply the config's
+  monitors [apply]  list monitors (names for the config) and their modes, or
+                    apply the config's monitor and screen settings
   check             check the config for errors and exit
   default-config    print the built-in default config
   -v, --version     print the version";
@@ -94,6 +100,8 @@ fn main() {
             );
         }
         Some("keyboard") => keyboard_cmd(load(), args.get(1).map(String::as_str)),
+        Some("input") => input_cmd(load(), args.get(1).map(String::as_str)),
+        Some("monitors") => monitors_cmd(load(), args.get(1).map(String::as_str)),
         Some("default-config") => print!("{}", config::DEFAULT_CONFIG),
         Some("-v" | "--version") => println!("trwm-{}", env!("CARGO_PKG_VERSION")),
         Some("-h" | "--help") => println!("{USAGE}"),
@@ -165,6 +173,77 @@ fn keyboard_cmd(cfg: config::Config, sub: Option<&str>) {
                 println!("applied");
             }
             Some(o) => die(&format!("keyboard: unknown subcommand '{o}' (show, apply)")),
+        }
+        x11::xlib::XCloseDisplay(dpy);
+    }
+}
+
+fn open_display() -> *mut x11::xlib::Display {
+    let dpy = unsafe { x11::xlib::XOpenDisplay(std::ptr::null()) };
+    if dpy.is_null() {
+        die("cannot open display");
+    }
+    dpy
+}
+
+/// `trwm input`: list mice and touchpads with their settings;
+/// `trwm input apply`: apply the config's mouse/touchpad settings now.
+fn input_cmd(cfg: config::Config, sub: Option<&str>) {
+    let dpy = open_display();
+    match sub {
+        None | Some("show") => {
+            let devs = input::devices(dpy);
+            if devs.is_empty() {
+                println!("no mice or touchpads found");
+            }
+            for d in devs {
+                println!("{} ({}): {}", d.name, if d.touchpad { "touchpad" } else { "mouse" }, input::describe(dpy, &d));
+            }
+        }
+        Some("apply") => {
+            input::apply(dpy, &cfg.input);
+            println!("applied");
+        }
+        Some(o) => die(&format!("input: unknown subcommand '{o}' (show, apply)")),
+    }
+    unsafe { x11::xlib::XCloseDisplay(dpy) };
+}
+
+/// `trwm monitors`: list the outputs (names for the config), their modes and
+/// the screen blanking settings; `trwm monitors apply`: apply the config now.
+fn monitors_cmd(cfg: config::Config, sub: Option<&str>) {
+    let dpy = open_display();
+    unsafe {
+        let screen = x11::xlib::XDefaultScreen(dpy);
+        let root = x11::xlib::XRootWindow(dpy, screen);
+        match sub {
+            None | Some("show") => {
+                let Some(outs) = outputs::query(dpy, root) else { die("RandR is not available") };
+                for o in &outs {
+                    println!("{}", outputs::describe(o));
+                }
+                let (blank, off) = screen::current(dpy);
+                let secs = |s: u32| if s == 0 { "never".to_string() } else { format!("after {s}s") };
+                println!("screen: blank {}, monitor off {}", secs(blank), off.map_or("never".into(), secs));
+                if !cfg.monitors.is_empty() {
+                    match outputs::plan(&outs, &cfg.monitors) {
+                        Ok((plans, (w, h), _)) => {
+                            let n = plans.iter().filter(|p| p.mode != 0).count();
+                            println!("config: {n} monitor(s) on, screen {w}x{h}");
+                        }
+                        Err(e) => println!("config: {e}"),
+                    }
+                }
+            }
+            Some("apply") => {
+                screen::apply(dpy, &cfg.screen);
+                match outputs::apply(dpy, root, screen, &cfg.monitors, cfg.dpi) {
+                    Ok(true) => println!("applied"),
+                    Ok(false) => println!("nothing to change"),
+                    Err(e) => die(&e),
+                }
+            }
+            Some(o) => die(&format!("monitors: unknown subcommand '{o}' (show, apply)")),
         }
         x11::xlib::XCloseDisplay(dpy);
     }
