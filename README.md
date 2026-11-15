@@ -73,7 +73,8 @@ in the bar. If something doesn't work, run `trwm doctor`.
 ## Features
 
 - **Easy setup:** `trwm doctor` checks your system and tells you how to fix what's missing,
-  trwm writes its config on first start, and that config explains every option
+  trwm writes its config on first start, that config explains every option, and your
+  editor autocompletes it
 - **dwm-style tiling:** tags, master/stack layout, monocle, floating windows,
   multiple monitors (Xinerama), urgency hints, fullscreen (EWMH), dialogs float automatically,
   and you can move/resize windows with the mouse (with edge snapping)
@@ -379,6 +380,26 @@ out, so you turn a feature on by removing the `--` in front of it.
 - **Errors are safe:** if the config has an error, trwm keeps the last working config and
   shows the error in the bar. `trwm check` shows the full error in your terminal.
 - **Split it up:** `require("keys")` loads `~/.config/trwm/keys.lua`.
+
+### Autocomplete in your editor
+
+trwm writes two files next to your config when it starts: `types/trwm.lua`, which
+describes every option and `trwm.*` function, and `.luarc.json`, which tells the
+editor to use it. With an editor that uses the **Lua language server** (Neovim with
+`lua_ls`, VS Code with the Lua extension, Helix, Zed, …) you get:
+
+- **Autocomplete** for every option, with a short explanation of each.
+- **Errors while you type** for wrong values (`accel = "fast"`), misspelled actions
+  (`a.spwan`) and wrong types.
+- **No more "undefined global `trwm`"** warnings.
+
+The `---@type trwm.Config` line above `return {` in the config turns this on. The
+types file is updated when trwm is; `.luarc.json` is only written if you don't have
+one. `trwm types` writes them by hand.
+
+Misspelled option names, like `tapp = true` instead of `tap = true`, are caught by trwm
+itself: `trwm check` (and the bar, when you save) says
+`unknown option 'tapp' in touchpad (did you mean 'tap'?)`.
 
 ### Example config
 
@@ -881,6 +902,7 @@ trwm monitors [apply]    list monitors (names and modes), or apply the config's 
                          and screen settings
 trwm doctor              check your setup and say how to fix what's missing
 trwm check               check the config for errors
+trwm types [DIR]         write the editor autocomplete files (trwm does this on start)
 trwm default-config      print the built-in default config
 trwm -c FILE ...         use another config file
 trwm --version

@@ -322,6 +322,16 @@ pub fn run(cfg_path: Option<&Path>) -> i32 {
         }
     };
     let Some(cfg) = cfg else { return 1 };
+    let dir = path.parent().map(Path::to_path_buf).unwrap_or_else(config::config_dir);
+    let types_ok = std::fs::read_to_string(dir.join("types/trwm.lua")).ok().as_deref() == Some(config::TYPES);
+    if types_ok && dir.join(".luarc.json").exists() {
+        r.ok("editor autocomplete is set up (types/trwm.lua, .luarc.json)");
+    } else {
+        r.warn(
+            "editor autocomplete files are missing or outdated",
+            "trwm writes them when it starts, or run: trwm types\n(for editors with the Lua language server: Neovim, VS Code, ...)",
+        );
+    }
     if let Some(w) = &cfg.wallpaper {
         let p = config::expand_tilde(&w.path);
         if Path::new(&p).exists() {

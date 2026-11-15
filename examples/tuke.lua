@@ -123,6 +123,7 @@ end
 
 -- the config -------------------------------------------------------------------
 
+---@type trwm.Config
 return {
   modkey   = "Super",                 -- what "Mod" means in keys/buttons
   fonts    = { "monospace:size=12", "Symbols Nerd Font Mono:size=13" },

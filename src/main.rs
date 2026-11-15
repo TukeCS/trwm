@@ -34,6 +34,8 @@ commands:
                       trwm msg 'trwm.wallpaper(\"~/Pictures/wall.png\")'
   doctor            check your setup (programs, fonts, lock screen, X server,
                     config) and say how to fix what's missing
+  types [dir]       write the editor files for autocomplete in the config
+                    (types/trwm.lua and .luarc.json; trwm does this on start)
   status            print the status line once and exit
   keyboard [apply]  show the keyboard layout (and what the config sets), or
                     apply the config's keyboard settings now
@@ -103,6 +105,16 @@ fn main() {
             );
         }
         Some("doctor") => exit(doctor::run(cfg_path.as_deref())),
+        Some("types") => {
+            let dir = args.get(1).map(PathBuf::from).unwrap_or_else(|| {
+                cfg_path.as_deref().and_then(|p| p.parent()).map(PathBuf::from).unwrap_or_else(config::config_dir)
+            });
+            match config::write_editor_files(&dir) {
+                Ok(w) if w.is_empty() => println!("editor files in {} are up to date", dir.display()),
+                Ok(w) => w.iter().for_each(|p| println!("wrote {}", p.display())),
+                Err(e) => die(&format!("types: {e}")),
+            }
+        }
         Some("keyboard") => keyboard_cmd(load(), args.get(1).map(String::as_str)),
         Some("input") => input_cmd(load(), args.get(1).map(String::as_str)),
         Some("monitors") => monitors_cmd(load(), args.get(1).map(String::as_str)),
@@ -126,6 +138,10 @@ fn run_wm(cfg_path: Option<PathBuf>) {
         ),
     };
     let watch = cfg_path.clone().or_else(|| Some(config::default_path()).filter(|p| p.exists()));
+    // autocomplete for the config in editors (Lua language server)
+    if let Some(dir) = watch.as_deref().and_then(|p| p.parent()) {
+        let _ = config::write_editor_files(dir);
+    }
     let mut wm = match wm::WindowManager::new(cfg, watch) {
         Ok(w) => w,
         Err(e) => die(&e),

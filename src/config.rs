@@ -15,6 +15,36 @@ use x11::xlib;
 
 pub const DEFAULT_CONFIG: &str = include_str!("../config.lua");
 
+/// Type definitions for the Lua language server (autocomplete in editors).
+pub const TYPES: &str = include_str!("../types/trwm.lua");
+
+const LUARC: &str = r#"{
+  "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
+  "runtime.version": "Lua 5.4",
+  "workspace.library": ["types"],
+  "workspace.checkThirdParty": false
+}
+"#;
+
+/// Write the editor support files next to the config: types/trwm.lua (kept
+/// up to date with this version of trwm) and .luarc.json (only if missing,
+/// so your own settings are kept). Returns the files that were written.
+pub fn write_editor_files(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
+    let mut written = vec![];
+    let types = dir.join("types/trwm.lua");
+    if std::fs::read_to_string(&types).ok().as_deref() != Some(TYPES) {
+        std::fs::create_dir_all(dir.join("types"))?;
+        std::fs::write(&types, TYPES)?;
+        written.push(types);
+    }
+    let luarc = dir.join(".luarc.json");
+    if !luarc.exists() {
+        std::fs::write(&luarc, LUARC)?;
+        written.push(luarc);
+    }
+    Ok(written)
+}
+
 // ---------------------------------------------------------------------------
 // commands
 // ---------------------------------------------------------------------------
@@ -364,6 +394,111 @@ fn layout_sel(v: &Value, what: &str) -> mlua::Result<LayoutSel> {
     })
 }
 
+// ---------------------------------------------------------------------------
+// unknown option names
+// ---------------------------------------------------------------------------
+
+const TOP: &[&str] = &[
+    "modkey", "fonts", "font", "dpi", "cursor_size", "cursor_theme", "screen", "monitors", "keyboard", "mouse", "touchpad",
+    "borderpx", "gaps", "colors", "showbar", "topbar", "hide_empty_tags", "wallpaper", "tags", "rules", "default_layout",
+    "layouts", "mfact", "nmaster", "drag_tiled", "focus_follows_mouse", "snap", "resizehints", "lockfullscreen",
+    "refresh_rate", "keys", "buttons", "status", "lock", "autostart",
+];
+const GAPS: &[&str] = &["inner", "outer", "inner_h", "inner_v", "outer_h", "outer_v", "smart", "enabled"];
+const SCHEME: &[&str] = &["fg", "bg", "border"];
+const LOCK: &[&str] = &["colors", "fail_on_clear", "clock", "message", "font", "small_font", "monitor_off", "idle", "pam_service"];
+const LOCK_COLORS: &[&str] = &["init", "input", "failed", "text"];
+const WALLPAPER: &[&str] = &["path", "mode", "interval"];
+const KEYBOARD: &[&str] = &["layout", "variant", "model", "options", "repeat_delay", "repeat_rate", "numlock"];
+const MOUSE: &[&str] = &["speed", "accel", "natural_scroll", "left_handed", "middle_emulation"];
+const TOUCHPAD: &[&str] = &["speed", "accel", "natural_scroll", "left_handed", "middle_emulation", "tap", "disable_while_typing"];
+const SCREEN: &[&str] = &["blank", "off"];
+const RULE: &[&str] = &["class", "instance", "title", "tag", "tags", "floating", "monitor"];
+const MONITOR: &[&str] = &["output", "mode", "rate", "right_of", "left_of", "above", "below", "same_as", "pos", "primary", "rotate", "off"];
+
+/// Edit distance, for "did you mean ...".
+fn distance(a: &str, b: &str) -> usize {
+    let b: Vec<char> = b.chars().collect();
+    let mut row: Vec<usize> = (0..=b.len()).collect();
+    for (i, ca) in a.chars().enumerate() {
+        let mut prev = row[0];
+        row[0] = i + 1;
+        for (j, &cb) in b.iter().enumerate() {
+            let cur = row[j + 1];
+            row[j + 1] = (prev + (ca != cb) as usize).min(row[j] + 1).min(row[j + 1] + 1);
+            prev = cur;
+        }
+    }
+    row[b.len()]
+}
+
+/// Error on option names `t` doesn't know; integer keys (list entries) are fine.
+fn check_names(t: &Table, allowed: &[&str], what: &str) -> mlua::Result<()> {
+    for pair in t.clone().pairs::<Value, Value>() {
+        let (k, _) = pair?;
+        let Value::String(k) = k else { continue };
+        let k = k.to_string_lossy();
+        if allowed.contains(&k.as_str()) {
+            continue;
+        }
+        let close = allowed.iter().map(|a| (distance(&k, a), *a)).filter(|(d, _)| *d <= 2).min();
+        let hint = match close {
+            Some((_, a)) => format!(" (did you mean '{a}'?)"),
+            None => format!(" (known: {})", allowed.join(", ")),
+        };
+        let place = if what.is_empty() { String::new() } else { format!(" in {what}") };
+        return Err(lerr(format!("unknown option '{k}'{place}{hint}")));
+    }
+    Ok(())
+}
+
+/// Check every option name in the config, so typos give an error instead of
+/// being silently ignored.
+fn validate(t: &Table) -> mlua::Result<()> {
+    check_names(t, TOP, "")?;
+    let sub = |k: &str| t.get::<Value>(k).ok().and_then(|v| if let Value::Table(t) = v { Some(t) } else { None });
+    if let Some(g) = sub("gaps") {
+        check_names(&g, GAPS, "gaps")?;
+    }
+    if let Some(c) = sub("colors") {
+        check_names(&c, &["norm", "sel"], "colors")?;
+        for s in ["norm", "sel"] {
+            if let Ok(Some(st)) = c.get::<Option<Table>>(s) {
+                check_names(&st, SCHEME, &format!("colors.{s}"))?;
+            }
+        }
+    }
+    if let Some(l) = sub("lock") {
+        check_names(&l, LOCK, "lock")?;
+        if let Ok(Some(c)) = l.get::<Option<Table>>("colors") {
+            check_names(&c, LOCK_COLORS, "lock.colors")?;
+        }
+    }
+    for (key, names) in [("wallpaper", WALLPAPER), ("keyboard", KEYBOARD), ("mouse", MOUSE), ("touchpad", TOUCHPAD), ("screen", SCREEN)] {
+        if let Some(s) = sub(key) {
+            check_names(&s, names, key)?;
+        }
+    }
+    if let Some(s) = sub("status") {
+        check_names(&s, &["interval", "enabled"], "status")?;
+        for (i, e) in s.sequence_values::<Value>().enumerate() {
+            if let Ok(Value::Table(e)) = e {
+                check_names(&e, &["interval"], &format!("status entry {}", i + 1))?;
+            }
+        }
+    }
+    for (key, names, what) in [("rules", RULE, "rule"), ("monitors", MONITOR, "monitor")] {
+        if let Some(list) = sub(key) {
+            for (i, e) in list.sequence_values::<Value>().enumerate() {
+                if let Ok(Value::Table(e)) = e {
+                    check_names(&e, names, &format!("{what} {}", i + 1))?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// `screen = { blank = 600 | false, off = 900 | false }`
 fn parse_screen(t: Option<Table>) -> mlua::Result<crate::screen::ScreenCfg> {
     let Some(t) = t else { return Ok(Default::default()) };
@@ -655,6 +790,7 @@ impl Config {
     }
 
     fn parse(lua: Lua, queue: Queue, t: &Table) -> mlua::Result<Config> {
+        validate(t)?;
         let modkey = parse_mods(&get(t, "modkey", "Super".to_string())?, xlib::Mod4Mask)
             .ok_or_else(|| lerr("modkey: unknown modifier"))?;
 
@@ -1015,6 +1151,14 @@ mod tests {
         assert!(Config::from_source("return { monitors = { { output = 'X', mode = '1080p' } } }", "t", None).is_err());
         assert!(Config::from_source("return { monitors = { { output = 'X', rotate = 'sideways' } } }", "t", None).is_err());
         assert!(Config::from_source("return { screen = { blank = true } }", "t", None).is_err());
+        // unknown option names, with a suggestion
+        let e = Config::from_source("return { touchpad = { tapp = true } }", "t", None).err().unwrap();
+        assert!(e.contains("unknown option 'tapp' in touchpad (did you mean 'tap'?)"), "{e}");
+        let e = Config::from_source("return { borderpix = 2 }", "t", None).err().unwrap();
+        assert!(e.contains("did you mean 'borderpx'"), "{e}");
+        let e = Config::from_source("return { monitors = { { output = 'X', rigth_of = 'Y' } } }", "t", None).err().unwrap();
+        assert!(e.contains("in monitor 1 (did you mean 'right_of'?)"), "{e}");
+        assert!(Config::from_source("return { mouse = { tap = true } }", "t", None).is_err()); // tap is touchpad-only
         // default_layout picks by name or symbol, regardless of list order
         let l = "layouts = { {'[]=','tile'}, {'S','spiral'}, {'><>','float'} }";
         assert_eq!(Config::from_source(&format!("return {{ {l} }}"), "t", None).unwrap().default_layout, 0);
