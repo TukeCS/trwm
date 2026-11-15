@@ -77,6 +77,8 @@ return {
   fonts    = { "monospace:size=10" },
   -- dpi   = 144,                     -- screen DPI for HiDPI screens (like `xrandr --dpi`
                                       -- + Xft.dpi). Unset = leave it alone (usually 96)
+  -- cursor_size  = 24,               -- mouse cursor size in pixels (like Xcursor.size)
+  -- cursor_theme = "Adwaita",        -- mouse cursor theme (like Xcursor.theme)
 
   borderpx = 1,
   snap     = 32,

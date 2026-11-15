@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
 use x11::xlib::{self, Atom, Window};
-use x11::{xinerama, xrandr, xss};
+use x11::{xcursor, xinerama, xrandr, xss};
 
 use crate::config::{self, Click, Cmd, Config, Gaps, LayoutKind, LayoutSel, Spawn};
 use crate::drw::{Drw, Scheme};
@@ -369,6 +369,7 @@ impl WindowManager {
         self.focus(None);
 
         self.apply_dpi();
+        self.apply_cursor();
         self.status.reset(&self.cfg);
         self.apply_wallpaper(true);
         if std::env::var_os("TRWM_RESTARTED").is_none() {
@@ -638,6 +639,9 @@ impl WindowManager {
         if old.dpi != self.cfg.dpi {
             self.apply_dpi();
         }
+        if old.cursor_size != self.cfg.cursor_size || old.cursor_theme != self.cfg.cursor_theme {
+            self.apply_cursor();
+        }
         if old.wallpaper != self.cfg.wallpaper {
             self.apply_wallpaper(true);
         }
@@ -851,6 +855,13 @@ impl WindowManager {
             }
         };
         cmd.stdin(Stdio::null());
+        // programs started from trwm get the configured cursor
+        if let Some(s) = self.cfg.cursor_size {
+            cmd.env("XCURSOR_SIZE", s.to_string());
+        }
+        if let Some(t) = &self.cfg.cursor_theme {
+            cmd.env("XCURSOR_THEME", t);
+        }
         unsafe {
             cmd.pre_exec(|| {
                 libc::setsid();
@@ -883,6 +894,58 @@ impl WindowManager {
             Ok(c) => self.lock_child = Some(c),
             Err(e) => self.show_error(format!("lock: {e}")),
         }
+    }
+
+    /// `cursor_size` / `cursor_theme`: what `Xcursor.size` / `Xcursor.theme` in
+    /// ~/.Xresources do, plus trwm's own cursors (root window, bar, move, resize).
+    unsafe fn apply_cursor(&mut self) {
+        let (size, theme) = (self.cfg.cursor_size, self.cfg.cursor_theme.clone());
+        if size.is_none() && theme.is_none() {
+            return;
+        }
+        if let Some(s) = size {
+            xcursor::XcursorSetDefaultSize(self.dpy, s as c_int);
+        }
+        if let Some(t) = &theme
+            && let Ok(c) = CString::new(t.as_str())
+        {
+            xcursor::XcursorSetTheme(self.dpy, c.as_ptr());
+        }
+        // the resource database, for programs not started by trwm
+        let mut real: Atom = 0;
+        let mut format = 0;
+        let (mut n, mut extra) = (0, 0);
+        let mut p: *mut c_uchar = ptr::null_mut();
+        let mut res = String::new();
+        if xlib::XGetWindowProperty(self.dpy, self.root, xlib::XA_RESOURCE_MANAGER, 0, 1 << 22, xlib::False, xlib::XA_STRING, &mut real, &mut format, &mut n, &mut extra, &mut p)
+            == xlib::Success as c_int
+            && !p.is_null()
+        {
+            res = String::from_utf8_lossy(std::slice::from_raw_parts(p, n as usize)).into_owned();
+            xlib::XFree(p as *mut _);
+        }
+        if let Some(s) = size {
+            res = config::set_resource(&res, "Xcursor.size", &s.to_string());
+        }
+        if let Some(t) = &theme {
+            res = config::set_resource(&res, "Xcursor.theme", t);
+        }
+        xlib::XChangeProperty(self.dpy, self.root, xlib::XA_RESOURCE_MANAGER, xlib::XA_STRING, 8, xlib::PropModeReplace, res.as_ptr(), res.len() as c_int);
+
+        // recreate our own cursors with the new size/theme
+        let new = [
+            xlib::XCreateFontCursor(self.dpy, 68),  // XC_left_ptr
+            xlib::XCreateFontCursor(self.dpy, 120), // XC_sizing
+            xlib::XCreateFontCursor(self.dpy, 52),  // XC_fleur
+        ];
+        xlib::XDefineCursor(self.dpy, self.root, new[0]);
+        for m in &self.mons {
+            xlib::XDefineCursor(self.dpy, m.barwin, new[0]);
+        }
+        for c in std::mem::replace(&mut self.cursors, new) {
+            xlib::XFreeCursor(self.dpy, c);
+        }
+        xlib::XSync(self.dpy, xlib::False);
     }
 
     /// `dpi = N`: what `xrandr --dpi N` and `Xft.dpi: N` in ~/.Xresources do.

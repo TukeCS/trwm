@@ -187,6 +187,10 @@ pub struct Config {
     pub fonts: Vec<String>,
     /// screen DPI (like `xrandr --dpi` + `Xft.dpi`); None = leave it alone
     pub dpi: Option<u32>,
+    /// mouse cursor size in pixels (Xcursor.size / XCURSOR_SIZE)
+    pub cursor_size: Option<u32>,
+    /// mouse cursor theme (Xcursor.theme / XCURSOR_THEME)
+    pub cursor_theme: Option<String>,
     pub border_px: u32,
     pub snap: u32,
     pub gaps: Gaps,
@@ -547,6 +551,13 @@ impl Config {
             return Err(lerr(format!("dpi: {d} is out of range (30-1000)")));
         }
 
+        let cursor_size: Option<u32> = t.get("cursor_size")?;
+        if let Some(s) = cursor_size
+            && !(8..=512).contains(&s)
+        {
+            return Err(lerr(format!("cursor_size: {s} is out of range (8-512)")));
+        }
+
         let fonts = match t.get::<Value>("fonts")? {
             Value::String(s) => vec![s.to_string_lossy()],
             Value::Table(l) => l.sequence_values::<String>().collect::<mlua::Result<Vec<_>>>()?,
@@ -759,6 +770,8 @@ impl Config {
             path: None,
             fonts,
             dpi,
+            cursor_size,
+            cursor_theme: t.get("cursor_theme")?,
             border_px: get(t, "borderpx", 1)?,
             snap: get(t, "snap", 32)?,
             gaps,
@@ -828,5 +841,8 @@ mod tests {
         assert!(Config::from_source("return { dpi = 5 }", "t", None).is_err());
         assert_eq!(Config::from_source("return { dpi = 144 }", "t", None).unwrap().dpi, Some(144));
         assert_eq!(Config::from_source("return {}", "t", None).unwrap().dpi, None);
+        assert!(Config::from_source("return { cursor_size = 2 }", "t", None).is_err());
+        let c = Config::from_source("return { cursor_size = 36, cursor_theme = 'Adwaita' }", "t", None).unwrap();
+        assert_eq!((c.cursor_size, c.cursor_theme.as_deref()), (Some(36), Some("Adwaita")));
     }
 }
