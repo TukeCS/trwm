@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
 use x11::xlib::{self, Atom, Window};
-use x11::{xinerama, xss};
+use x11::{xinerama, xrandr, xss};
 
 use crate::config::{self, Click, Cmd, Config, Gaps, LayoutKind, LayoutSel, Spawn};
 use crate::drw::{Drw, Scheme};
@@ -258,7 +258,7 @@ impl WindowManager {
             let sh = xlib::XDisplayHeight(dpy, screen);
             let root = xlib::XRootWindow(dpy, screen);
             let mut drw = Drw::new(dpy, screen, root, sw as u32, 64);
-            if !drw.set_fonts(&cfg.fonts) && !drw.set_fonts(&["monospace:size=10".into()]) {
+            if !drw.set_fonts(&config::with_dpi(&cfg.fonts, cfg.dpi)) && !drw.set_fonts(&["monospace:size=10".into()]) {
                 return Err("no fonts could be loaded".into());
             }
             let fh = drw.font_h() as i32;
@@ -368,6 +368,7 @@ impl WindowManager {
         self.grabkeys();
         self.focus(None);
 
+        self.apply_dpi();
         self.status.reset(&self.cfg);
         self.apply_wallpaper(true);
         if std::env::var_os("TRWM_RESTARTED").is_none() {
@@ -569,7 +570,8 @@ impl WindowManager {
         let old = std::mem::replace(&mut self.cfg, new);
         let cfg = &self.cfg;
 
-        if cfg.fonts != old.fonts && !self.drw.set_fonts(&cfg.fonts) {
+        let fonts = config::with_dpi(&cfg.fonts, cfg.dpi);
+        if fonts != config::with_dpi(&old.fonts, old.dpi) && !self.drw.set_fonts(&fonts) {
             self.error = Some(("could not load any configured font".into(), Instant::now()));
         }
         let fh = self.drw.font_h() as i32;
@@ -632,6 +634,9 @@ impl WindowManager {
         }
         if let Some(s) = sel {
             xlib::XSetWindowBorder(self.dpy, s, self.sel.border.pixel);
+        }
+        if old.dpi != self.cfg.dpi {
+            self.apply_dpi();
         }
         if old.wallpaper != self.cfg.wallpaper {
             self.apply_wallpaper(true);
@@ -878,6 +883,34 @@ impl WindowManager {
             Ok(c) => self.lock_child = Some(c),
             Err(e) => self.show_error(format!("lock: {e}")),
         }
+    }
+
+    /// `dpi = N`: what `xrandr --dpi N` and `Xft.dpi: N` in ~/.Xresources do.
+    /// Programs started afterwards pick it up.
+    unsafe fn apply_dpi(&mut self) {
+        let Some(dpi) = self.cfg.dpi else { return };
+        // 1. the physical screen size the X server reports (xrandr --dpi)
+        let (mut eb, mut er) = (0, 0);
+        if xrandr::XRRQueryExtension(self.dpy, &mut eb, &mut er) != 0 {
+            let mm = |px: i32| ((px as f64 * 25.4 / dpi as f64).round() as c_int).max(1);
+            xrandr::XRRSetScreenSize(self.dpy, self.root, self.sw, self.sh, mm(self.sw), mm(self.sh));
+        }
+        // 2. Xft.dpi in the X resource database (what xrdb sets), keeping everything else
+        let mut real: Atom = 0;
+        let mut format = 0;
+        let (mut n, mut extra) = (0, 0);
+        let mut p: *mut c_uchar = ptr::null_mut();
+        let mut res = String::new();
+        if xlib::XGetWindowProperty(self.dpy, self.root, xlib::XA_RESOURCE_MANAGER, 0, 1 << 22, xlib::False, xlib::XA_STRING, &mut real, &mut format, &mut n, &mut extra, &mut p)
+            == xlib::Success as c_int
+            && !p.is_null()
+        {
+            res = String::from_utf8_lossy(std::slice::from_raw_parts(p, n as usize)).into_owned();
+            xlib::XFree(p as *mut _);
+        }
+        let out = config::set_resource(&res, "Xft.dpi", &dpi.to_string());
+        xlib::XChangeProperty(self.dpy, self.root, xlib::XA_RESOURCE_MANAGER, xlib::XA_STRING, 8, xlib::PropModeReplace, out.as_ptr(), out.len() as c_int);
+        xlib::XSync(self.dpy, xlib::False);
     }
 
     fn feh(&mut self, path: &str, mode: &str) {

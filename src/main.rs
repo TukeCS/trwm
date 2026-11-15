@@ -50,7 +50,7 @@ fn main() {
         None => run_wm(cfg_path),
         Some("lock") => {
             let cfg = load();
-            if let Err(e) = lock::run(&cfg.lock) {
+            if let Err(e) = lock::run(&cfg.lock, cfg.dpi) {
                 die(&format!("lock: {e}"));
             }
         }

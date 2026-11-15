@@ -30,7 +30,7 @@ struct Screen {
     colors: [Color; 4],
 }
 
-pub fn run(cfg: &LockCfg) -> Result<(), String> {
+pub fn run(cfg: &LockCfg, dpi: Option<u32>) -> Result<(), String> {
     let user = pam::username().ok_or("cannot determine user name")?;
     // prefer a dedicated /etc/pam.d/trwm (see README) so failed attempts at
     // the lock screen don't count towards pam_faillock for your login
@@ -47,7 +47,7 @@ pub fn run(cfg: &LockCfg) -> Result<(), String> {
         let nscreens = xlib::XScreenCount(dpy);
         let mut screens = Vec::new();
         for s in 0..nscreens {
-            screens.push(lock_screen(dpy, s, cfg)?);
+            screens.push(lock_screen(dpy, s, cfg, dpi)?);
         }
 
         // grab keyboard and pointer; retry for a second because the key that
@@ -225,15 +225,15 @@ unsafe fn invisible_cursor(dpy: *mut xlib::Display, root: xlib::Window) -> xlib:
     cur
 }
 
-unsafe fn lock_screen(dpy: *mut xlib::Display, screen: c_int, cfg: &LockCfg) -> Result<Screen, String> {
+unsafe fn lock_screen(dpy: *mut xlib::Display, screen: c_int, cfg: &LockCfg, dpi: Option<u32>) -> Result<Screen, String> {
     let root = xlib::XRootWindow(dpy, screen);
     let w = xlib::XDisplayWidth(dpy, screen) as u32;
     let h = xlib::XDisplayHeight(dpy, screen) as u32;
 
     let mut big = Drw::new(dpy, screen, root, w, h);
     let mut small = Drw::new(dpy, screen, root, 1, 1);
-    big.set_fonts(&[cfg.font.clone(), "monospace:size=48".into()]);
-    small.set_fonts(&[cfg.small_font.clone(), "monospace:size=14".into()]);
+    big.set_fonts(&crate::config::with_dpi(&[cfg.font.clone(), "monospace:size=48".into()], dpi));
+    small.set_fonts(&crate::config::with_dpi(&[cfg.small_font.clone(), "monospace:size=14".into()], dpi));
     let colors = [big.color(&cfg.init), big.color(&cfg.input), big.color(&cfg.failed), big.color(&cfg.text)];
 
     let mut wa: xlib::XSetWindowAttributes = std::mem::zeroed();

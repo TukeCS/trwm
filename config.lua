@@ -75,6 +75,8 @@ end
 return {
   modkey   = "Super",                 -- what "Mod" means: "Super" or "Alt"
   fonts    = { "monospace:size=10" },
+  -- dpi   = 144,                     -- screen DPI for HiDPI screens (like `xrandr --dpi`
+                                      -- + Xft.dpi). Unset = leave it alone (usually 96)
 
   borderpx = 1,
   snap     = 32,

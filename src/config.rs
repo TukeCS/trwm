@@ -185,6 +185,8 @@ pub struct Config {
     pub path: Option<PathBuf>,
 
     pub fonts: Vec<String>,
+    /// screen DPI (like `xrandr --dpi` + `Xft.dpi`); None = leave it alone
+    pub dpi: Option<u32>,
     pub border_px: u32,
     pub snap: u32,
     pub gaps: Gaps,
@@ -341,6 +343,27 @@ fn split_combo(spec: &str, modkey: u32) -> Result<(u32, String), String> {
         m |= parse_mods(p.trim(), modkey).ok_or_else(|| format!("unknown modifier '{p}' in '{spec}'"))?;
     }
     Ok((m, last.trim().to_string()))
+}
+
+/// Add `:dpi=N` to font patterns that don't set one, so trwm's own text
+/// scales the same way as other apps.
+pub fn with_dpi(fonts: &[String], dpi: Option<u32>) -> Vec<String> {
+    fonts
+        .iter()
+        .map(|f| match dpi {
+            Some(d) if !f.contains("dpi=") => format!("{f}:dpi={d}"),
+            _ => f.clone(),
+        })
+        .collect()
+}
+
+/// Set `key: value` in an X resource string (the RESOURCE_MANAGER property),
+/// replacing any existing entry for `key` and keeping everything else.
+pub fn set_resource(res: &str, key: &str, value: &str) -> String {
+    let prefix = format!("{key}:");
+    let mut out: String = res.lines().filter(|l| !l.trim_start().starts_with(&prefix)).map(|l| format!("{l}\n")).collect();
+    out.push_str(&format!("{key}:\t{value}\n"));
+    out
 }
 
 pub fn keysym(name: &str) -> xlib::KeySym {
@@ -517,6 +540,13 @@ impl Config {
             .ok_or_else(|| lerr("modkey: unknown modifier"))?;
 
         // fonts: string or list
+        let dpi: Option<u32> = t.get("dpi")?;
+        if let Some(d) = dpi
+            && !(30..=1000).contains(&d)
+        {
+            return Err(lerr(format!("dpi: {d} is out of range (30-1000)")));
+        }
+
         let fonts = match t.get::<Value>("fonts")? {
             Value::String(s) => vec![s.to_string_lossy()],
             Value::Table(l) => l.sequence_values::<String>().collect::<mlua::Result<Vec<_>>>()?,
@@ -728,6 +758,7 @@ impl Config {
             queue,
             path: None,
             fonts,
+            dpi,
             border_px: get(t, "borderpx", 1)?,
             snap: get(t, "snap", 32)?,
             gaps,
@@ -771,5 +802,31 @@ impl Config {
         let cmds = std::mem::take(&mut *self.queue.borrow_mut());
         r.map_err(|e| e.to_string())?;
         Ok(cmds)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dpi_is_added_to_fonts() {
+        let f = vec!["monospace:size=12".to_string(), "Sym:size=13:dpi=96".to_string()];
+        assert_eq!(with_dpi(&f, Some(144)), vec!["monospace:size=12:dpi=144", "Sym:size=13:dpi=96"]);
+        assert_eq!(with_dpi(&f, None), f);
+    }
+
+    #[test]
+    fn resource_is_replaced_not_duplicated() {
+        let res = "Xft.dpi:\t96\nXcursor.size:\t36\n";
+        assert_eq!(set_resource(res, "Xft.dpi", "144"), "Xcursor.size:\t36\nXft.dpi:\t144\n");
+        assert_eq!(set_resource("", "Xft.dpi", "144"), "Xft.dpi:\t144\n");
+    }
+
+    #[test]
+    fn bad_dpi_is_rejected() {
+        assert!(Config::from_source("return { dpi = 5 }", "t", None).is_err());
+        assert_eq!(Config::from_source("return { dpi = 144 }", "t", None).unwrap().dpi, Some(144));
+        assert_eq!(Config::from_source("return {}", "t", None).unwrap().dpi, None);
     }
 }

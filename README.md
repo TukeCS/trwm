@@ -89,7 +89,7 @@ To **build** trwm you need:
 |---|---|
 | Rust **1.88 or newer** + cargo | the compiler |
 | a C compiler + pkg-config | trwm builds Lua 5.4 from source, so you don't need Lua installed |
-| libX11, libXft, libXinerama, libXss, libXext | X11, fonts, multi-monitor, idle detection, DPMS |
+| libX11, libXft, libXinerama, libXss, libXext, libXrandr | X11, fonts, multi-monitor, idle detection, DPMS, DPI |
 | PAM (development files) | the screen locker checks your password with it |
 
 **At runtime** it uses:
@@ -112,7 +112,7 @@ You can swap kitty and rofi for any other programs in the config.
 ```sh
 sudo emerge --ask dev-lang/rust-bin dev-util/pkgconf \
     x11-libs/libX11 x11-libs/libXft x11-libs/libXinerama \
-    x11-libs/libXScrnSaver x11-libs/libXext sys-libs/pam media-gfx/feh
+    x11-libs/libXScrnSaver x11-libs/libXext x11-libs/libXrandr sys-libs/pam media-gfx/feh
 ```
 
 (Use `dev-lang/rust` instead of `rust-bin` to compile Rust yourself.)
@@ -120,14 +120,14 @@ sudo emerge --ask dev-lang/rust-bin dev-util/pkgconf \
 ### Arch Linux / Manjaro / EndeavourOS
 
 ```sh
-sudo pacman -S --needed base-devel rust libx11 libxft libxinerama libxss libxext pam feh
+sudo pacman -S --needed base-devel rust libx11 libxft libxinerama libxss libxext libxrandr pam feh
 ```
 
 ### Debian / Ubuntu / Linux Mint / Pop!_OS
 
 ```sh
 sudo apt install build-essential pkg-config \
-    libx11-dev libxft-dev libxinerama-dev libxss-dev libxext-dev libpam0g-dev feh
+    libx11-dev libxft-dev libxinerama-dev libxss-dev libxext-dev libxrandr-dev libpam0g-dev feh
 # Rust: the packaged version is usually too old, so use rustup (see above)
 ```
 
@@ -136,7 +136,7 @@ sudo apt install build-essential pkg-config \
 ```sh
 sudo dnf install gcc pkgconf-pkg-config rust cargo \
     libX11-devel libXft-devel libXinerama-devel libXScrnSaver-devel libXext-devel \
-    pam-devel feh
+    libXrandr-devel pam-devel feh
 ```
 
 ### openSUSE
@@ -144,7 +144,7 @@ sudo dnf install gcc pkgconf-pkg-config rust cargo \
 ```sh
 sudo zypper install gcc pkg-config rust cargo \
     libX11-devel libXft-devel libXinerama-devel libXss-devel libXext-devel \
-    pam-devel feh
+    libXrandr-devel pam-devel feh
 ```
 
 ### Void Linux
@@ -160,14 +160,14 @@ sudo xbps-install -S base-devel pkg-config rust cargo \
 ```sh
 sudo apk add build-base pkgconf rust cargo \
     libx11-dev libxft-dev libxinerama-dev libxscrnsaver-dev libxext-dev \
-    linux-pam-dev feh
+    libxrandr-dev linux-pam-dev feh
 ```
 
 ### NixOS
 
 ```sh
 nix-shell -p cargo rustc pkg-config xorg.libX11 xorg.libXft xorg.libXinerama \
-    xorg.libXScrnSaver xorg.libXext pam feh
+    xorg.libXScrnSaver xorg.libXext xorg.libXrandr pam feh
 ```
 
 ---
@@ -393,6 +393,19 @@ gaps = { inner = 10, outer = 10, smart = true }
 
 `Mod+=` / `Mod+-` change the gaps by 1 px. For bigger steps, use `a.incgaps(5)` and `a.incgaps(-5)`.
 
+### DPI
+
+On a HiDPI screen, set the DPI in the config instead of in `.xinitrc`:
+
+```lua
+dpi = 144,      -- 96 = normal, 144 = 150 %, 192 = 200 %
+```
+
+This does what `xrandr --dpi 144` and `Xft.dpi: 144` in `~/.Xresources` would do. trwm's
+own bar and lock screen use it too. Programs started after a change pick up the new DPI;
+programs that are already open keep their size until you restart them. Leave `dpi` unset
+to keep whatever your X server and `~/.Xresources` already set.
+
 ### Rules
 
 Rules put windows on certain tags or make them float. `class`, `instance` and `title` are
@@ -430,6 +443,7 @@ Switch to a layout with `a.setlayout("grid")` in a key binding, for example
 
 | option | default | meaning |
 |---|---|---|
+| `dpi` | unset | screen DPI for HiDPI screens, see [DPI](#dpi) |
 | `showbar` / `topbar` | `true` / `true` | show the bar / put it at the top |
 | `hide_empty_tags` | `false` | only show tags that have windows |
 | `mfact` | `0.55` | size of the master area (0.05–0.95) |
