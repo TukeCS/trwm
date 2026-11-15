@@ -1,9 +1,10 @@
 -- tuke's trwm config
 --
 -- A full personal setup to get ideas from: Gentoo purple theme, Nerd Font
--- icons for tags and status, vanity gaps, HiDPI (144 dpi), Hyprland-style
--- spiral/dwindle layouts (Mod+r flips between them, Mod+a re-tiles,
--- dragging swaps windows), window rules, media/brightness keys,
+-- icons for tags and status, vanity gaps, HiDPI (144 dpi) and cursor size,
+-- Hyprland-style spiral/dwindle layouts (Mod+r flips between them, Mod+a
+-- re-tiles, dragging swaps windows), keyboard / mouse / touchpad / monitor /
+-- screen blanking settings, window rules, media/brightness keys,
 -- screenshots, a feh wallpaper and autostart.
 --
 -- To try it:   cp examples/tuke.lua ~/.config/trwm/config.lua
@@ -12,7 +13,9 @@
 -- (PipeWire), brightnessctl, dunst, udiskie, lxqt-policykit-agent, picom,
 -- feh and "Symbols Nerd Font Mono". The supergfxctl and platform_profile
 -- status entries are for ASUS laptops; remove them on other machines, and
--- change the wallpaper path to one of your own images.
+-- change the wallpaper path to one of your own images. The monitor name
+-- ("eDP") and the mouse/touchpad values are for this laptop: run
+-- `trwm monitors` and `trwm input` to see yours.
 
 local a = trwm.action
 
@@ -124,8 +127,35 @@ return {
   modkey   = "Super",                 -- what "Mod" means in keys/buttons
   fonts    = { "monospace:size=12", "Symbols Nerd Font Mono:size=13" },
   dpi      = 144,                 -- screen DPI (replaces `xrandr --dpi 144` in .xinitrc)
-  screen      = { blank = false, off = false },  -- never blank (was `xset s off -dpms`)
   cursor_size = 36,               -- mouse cursor size (replaces Xcursor.size in ~/.Xresources)
+  -- cursor_theme = "Adwaita",
+
+  -- hardware: what setxkbmap, xset, xinput and xrandr would do. Every field
+  -- is optional; `trwm keyboard`, `trwm input` and `trwm monitors` show the
+  -- current settings and the names to use here.
+  keyboard = {
+    layout       = "us",                -- or { "us", "fr" } for several
+    -- variant   = { "", "azerty" },    -- one per layout
+    -- options   = { "caps:escape", "grp:alt_shift_toggle" },
+    repeat_delay = 660,                 -- ms before a held key repeats
+    repeat_rate  = 25,                  -- repeats per second
+    numlock      = false,
+  },
+  mouse = {                             -- the Logitech PRO X 2
+    speed  = 0.0,                       -- -1.0 .. 1.0
+    accel  = "adaptive",                -- "flat" = no acceleration
+    natural_scroll = false,
+  },
+  touchpad = {
+    tap                  = false,       -- tap to click
+    natural_scroll       = false,
+    disable_while_typing = true,
+  },
+  monitors = {
+    { output = "eDP", mode = "2560x1600", rate = 240, primary = true },
+    -- { output = "HDMI-A-0", mode = "1920x1080", rate = 144, right_of = "eDP" },
+  },
+  screen = { blank = false, off = false },  -- never blank (was `xset s off -dpms`)
   -- cursor_theme = "Adwaita",
 
   borderpx = 3,

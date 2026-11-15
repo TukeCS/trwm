@@ -357,8 +357,9 @@ commented there.
 
 [`examples/tuke.lua`](examples/tuke.lua) is a full personal setup to get ideas from. It
 has a custom colour theme, Nerd Font icons, gaps, HiDPI settings, the Hyprland-like
-spiral/dwindle setup described under [Layouts](#a-hyprland-like-setup), window rules,
-media/brightness keys, screenshots, a wallpaper and autostart. To try it:
+spiral/dwindle setup described under [Layouts](#a-hyprland-like-setup), keyboard, mouse,
+touchpad, monitor and screen blanking settings, window rules, media/brightness keys,
+screenshots, a wallpaper and autostart. To try it:
 
 ```sh
 cp examples/tuke.lua ~/.config/trwm/config.lua
