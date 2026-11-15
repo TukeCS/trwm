@@ -48,6 +48,7 @@ pub enum Cmd {
     SetLayout(LayoutSel),
     CycleLayout(i32),
     ToggleFloating,
+    Retile,
     ToggleFullscreen,
     ToggleBar,
     FocusMon(i32),
@@ -79,6 +80,8 @@ pub enum LayoutKind {
     BStack,
     Grid,
     Deck,
+    Dwindle,
+    Spiral,
 }
 
 #[derive(Clone, Debug)]
@@ -206,6 +209,8 @@ pub struct Config {
     pub resize_hints: bool,
     pub lock_fullscreen: bool,
     pub refresh_rate: u32,
+    /// dragging a tiled window swaps it with the one under the pointer (else it floats, like dwm)
+    pub drag_swap: bool,
     pub focus_follows_mouse: bool,
     pub layouts: Vec<LayoutDef>,
     pub keys: Vec<Key>,
@@ -443,6 +448,7 @@ fn install_api(lua: &Lua, queue: &Queue, dir: &Path) -> mlua::Result<()> {
     }));
     cmd!("cyclelayout", |v| Cmd::CycleLayout(int_arg(&a0(&v), 1) as i32));
     cmd!("togglefloating", |_v| Cmd::ToggleFloating);
+    cmd!("retile", |_v| Cmd::Retile);
     cmd!("togglefullscreen", |_v| Cmd::ToggleFullscreen);
     cmd!("togglebar", |_v| Cmd::ToggleBar);
     cmd!("focusmon", |v| Cmd::FocusMon(int_arg(&a0(&v), 1) as i32));
@@ -638,7 +644,9 @@ impl Config {
                         "bstack" => LayoutKind::BStack,
                         "grid" => LayoutKind::Grid,
                         "deck" => LayoutKind::Deck,
-                        other => return Err(lerr(format!("layouts: unknown layout '{other}' (tile, monocle, float, bstack, grid, deck)"))),
+                        "dwindle" | "fibonacci" => LayoutKind::Dwindle,
+                        "spiral" => LayoutKind::Spiral,
+                        other => return Err(lerr(format!("layouts: unknown layout '{other}' (tile, monocle, float, bstack, grid, deck, dwindle, spiral)"))),
                     };
                     layouts.push(LayoutDef { symbol, kind });
                 }
@@ -787,6 +795,11 @@ impl Config {
             resize_hints: get(t, "resizehints", false)?,
             lock_fullscreen: get(t, "lockfullscreen", true)?,
             refresh_rate: get::<u32>(t, "refresh_rate", 60)?.max(1),
+            drag_swap: match get(t, "drag_tiled", "float".to_string())?.as_str() {
+                "swap" => true,
+                "float" => false,
+                o => return Err(lerr(format!("drag_tiled: expected \"swap\" or \"float\", got '{o}'"))),
+            },
             focus_follows_mouse: get(t, "focus_follows_mouse", true)?,
             layouts,
             keys,

@@ -71,7 +71,10 @@ in the bar.
 - **dwm-style tiling:** tags, master/stack layout, monocle, floating windows,
   multiple monitors (Xinerama), urgency hints, fullscreen (EWMH), dialogs float automatically,
   and you can move/resize windows with the mouse (with edge snapping)
-- **More layouts:** `bstack` (master on top), `grid`, `deck`
+- **More layouts:** `dwindle` and `spiral` (Fibonacci, like Hyprland), `bstack` (master on
+  top), `grid`, `deck`
+- **Auto-tiling helpers:** `retile` puts every window you floated back into the tiling, and
+  `drag_tiled = "swap"` lets you drag tiled windows to swap them instead of floating them
 - **Gaps:** on by default. Change them live with `Mod+=` / `Mod+-`. With "smart gaps",
   a single window fills the screen without an outer gap
 - **Built-in status bar:** CPU, RAM, battery, temperature, disk, network, date and more,
@@ -277,7 +280,7 @@ Then pick **trwm** in the session menu at login.
 | `Mod+f` | `><>` floating |
 | `Mod+space` | switch back to the previous layout |
 
-The `bstack`, `grid` and `deck` layouts are built in too. Add them to `layouts` in your
+The `dwindle`, `spiral`, `bstack`, `grid` and `deck` layouts are built in too. Add them to `layouts` in your
 config and give them keys (see [Layouts](#layouts)).
 
 **Tags**
@@ -322,7 +325,7 @@ config and give them keys (see [Layouts](#layouts)).
 
 | action | does |
 |---|---|
-| `Mod` + left drag | move a window (it becomes floating) |
+| `Mod` + left drag | move a window (it becomes floating; with `drag_tiled = "swap"` it swaps places with the window you drop it on) |
 | `Mod` + right drag | resize a window |
 | `Mod` + middle click | toggle floating |
 | click a tag | view it |
@@ -443,8 +446,21 @@ rules = {
 
 ### Layouts
 
-The first layout in the list is the default. Available layouts: `tile`, `monocle`, `float`,
-`bstack`, `grid`, `deck`.
+The first layout in the list is the default. Available layouts:
+
+| layout | what it does |
+|---|---|
+| `tile` | master on the left, the rest stacked on the right (dwm) |
+| `monocle` | one window at a time, full size |
+| `float` | no tiling |
+| `bstack` | master on top, the rest side by side below |
+| `grid` | everything in an even grid |
+| `deck` | master on the left, the rest on top of each other on the right |
+| `dwindle` | Fibonacci, like Hyprland: each new window splits the last one, along its longer side (`fibonacci` works as a name too) |
+| `spiral` | Fibonacci that spirals inwards: left, top, right, bottom, … |
+
+`mfact` (`Mod+h` / `Mod+l`) sets the size of the first window in every layout. In
+`dwindle` and `spiral`, the following splits are always half and half.
 
 ```lua
 layouts = {
@@ -458,6 +474,22 @@ layouts = {
 
 Switch to a layout with `a.setlayout("grid")` in a key binding, for example
 `{ "Mod+o", a.setlayout("grid") }`.
+
+### Floating windows and re-tiling
+
+As in dwm, a tiled window becomes floating when you drag it with `Mod` + left mouse button
+or press `Mod+Shift+space`, and it stays floating whatever layout you switch to. Two
+options make trwm behave more like an auto-tiler:
+
+```lua
+drag_tiled = "swap",                 -- dragging a tiled window swaps it with the window
+                                     -- you drop it on, even on another monitor
+{ "Mod+space", a.retile() },         -- a key: put every floated window back into the tiling
+```
+
+`retile()` leaves windows that float on purpose alone: dialogs, popups, fixed-size windows,
+windows with a `floating = true` rule, and fullscreen windows. In the `float` layout it
+also switches to your first tiling layout.
 
 ### Other options
 
@@ -473,6 +505,7 @@ Switch to a layout with `a.setlayout("grid")` in a key binding, for example
 | `resizehints` | `false` | respect size hints of tiled windows (can leave gaps in terminals) |
 | `lockfullscreen` | `true` | don't let focus leave a fullscreen window |
 | `focus_follows_mouse` | `true` | focus windows when the mouse enters them |
+| `drag_tiled` | `"float"` | what dragging a tiled window does: `"float"` (dwm) or `"swap"` |
 | `refresh_rate` | `60` | Hz, for moving / resizing with the mouse |
 | `autostart` | `{}` | commands to run once when trwm starts |
 
@@ -598,6 +631,7 @@ and `0` means all tags.
 | `incnmaster(±1)` / `setmfact(±0.05)` | master count / size |
 | `setlayout(name or index)` / `cyclelayout(±1)` | change layout (no argument = previous) |
 | `togglefloating()` / `togglefullscreen()` / `togglebar()` | |
+| `retile()` | put every floated window back into the tiling |
 | `focusmon(±1)` / `tagmon(±1)` | monitors |
 | `movemouse()` / `resizemouse()` | for mouse buttons |
 | `togglegaps()` / `defaultgaps()` / `incgaps(±n)` | gaps |

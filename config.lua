@@ -40,6 +40,7 @@ local keys = {
   { "Mod+f",            a.setlayout("float") },
   { "Mod+m",            a.setlayout("monocle") },
   { "Mod+space",        a.setlayout() },           -- back to the previous layout
+  -- { "Mod+space",     a.retile() },              -- or: put every floated window back into the tiling
 
   -- gaps: Mod+= / Mod+- bigger/smaller, Mod+g on/off, Mod+Shift+g default size
   { "Mod+equal",        a.incgaps(1) },
@@ -104,8 +105,11 @@ return {
   nmaster        = 1,
   resizehints    = false,
   lockfullscreen = true,
+  drag_tiled     = "float",   -- Mod+drag a tiled window: "float" it (dwm) or "swap" it
+                              -- with the window you drop it on (Hyprland)
 
   -- first entry is the default; also available: bstack grid deck
+  -- dwindle (fibonacci, like Hyprland) spiral
   layouts = {
     { "[]=", "tile" },
     { "><>", "float" },

@@ -139,6 +139,8 @@ struct Client {
     isurgent: bool,
     neverfocus: bool,
     oldstate: bool,
+    /// floating because of a rule, dialog, transient or fixed size (not by the user)
+    autofloat: bool,
     isfullscreen: bool,
     mon: usize,
     win: Window,
@@ -759,6 +761,7 @@ impl WindowManager {
                 self.setlayout(LayoutSel::Index(next));
             }
             Cmd::ToggleFloating => self.togglefloating(),
+            Cmd::Retile => self.retile(),
             Cmd::ToggleFullscreen => {
                 if let Some(s) = self.mons[self.selmon].sel {
                     let fs = self.clients[&s].isfullscreen;
@@ -1637,7 +1640,9 @@ impl WindowManager {
             xlib::XA_WM_TRANSIENT_FOR => {
                 let mut trans: Window = 0;
                 if !self.clients[&w].isfloating && xlib::XGetTransientForHint(self.dpy, w, &mut trans) != 0 && self.clients.contains_key(&trans) {
-                    self.clients.get_mut(&w).unwrap().isfloating = true;
+                    let c = self.clients.get_mut(&w).unwrap();
+                    c.isfloating = true;
+                    c.autofloat = true;
                     self.arrange(Some(self.clients[&w].mon));
                 }
             }
@@ -1708,7 +1713,9 @@ impl WindowManager {
             self.setfullscreen(w, true);
         }
         if wtype == self.na(Net::WMWindowTypeDialog) {
-            self.clients.get_mut(&w).unwrap().isfloating = true;
+            let c = self.clients.get_mut(&w).unwrap();
+            c.isfloating = true;
+            c.autofloat = true;
         }
     }
 
@@ -2016,6 +2023,7 @@ impl WindowManager {
                 c.isfloating = has_trans || c.isfixed;
                 c.oldstate = c.isfloating;
             }
+            c.autofloat = c.isfloating;
             if c.isfloating {
                 xlib::XRaiseWindow(self.dpy, w);
             }
@@ -2343,6 +2351,8 @@ impl WindowManager {
             LayoutKind::BStack => self.bstack(m),
             LayoutKind::Grid => self.grid(m),
             LayoutKind::Deck => self.deck(m),
+            LayoutKind::Dwindle => self.fibonacci(m, false),
+            LayoutKind::Spiral => self.fibonacci(m, true),
             LayoutKind::Float => {}
         }
     }
@@ -2521,6 +2531,21 @@ impl WindowManager {
         }
     }
 
+    /// Fibonacci layouts (see [`fibonacci_rects`]).
+    unsafe fn fibonacci(&mut self, m: usize, spiral: bool) {
+        let (oh, ov, ih, iv, n) = self.getgaps(m);
+        if n == 0 {
+            return;
+        }
+        let tiled = self.tiled(m);
+        let mon = &self.mons[m];
+        let area = (mon.wx + ov, mon.wy + oh, mon.ww - 2 * ov, mon.wh - 2 * oh);
+        let rects = fibonacci_rects(n, area, mon.mfact, ih, iv, self.bh * 2, spiral);
+        for (w, (x, y, ww, hh)) in tiled.into_iter().zip(rects) {
+            self.place(w, x, y, ww, hh);
+        }
+    }
+
     unsafe fn grid(&mut self, m: usize) {
         let (oh, ov, ih, iv, n) = self.getgaps(m);
         if n == 0 {
@@ -2643,6 +2668,7 @@ impl WindowManager {
                 l.symbol == n
                     || format!("{:?}", l.kind).eq_ignore_ascii_case(&n)
                     || (n.eq_ignore_ascii_case("floating") && l.kind == LayoutKind::Float)
+                    || (n.eq_ignore_ascii_case("fibonacci") && l.kind == LayoutKind::Dwindle)
             }),
         };
         let mon = &mut self.mons[m];
@@ -2711,6 +2737,26 @@ impl WindowManager {
         }
     }
 
+    /// Put every window on the current tags back into the tiling, except ones
+    /// that float on purpose (dialogs, rules, fixed-size windows) and fullscreen
+    /// ones. In the floating layout, switch to the first tiling layout.
+    unsafe fn retile(&mut self) {
+        let m = self.selmon;
+        let vis: Vec<Window> = self.mons[m].clients.iter().copied().filter(|w| self.is_visible(*w)).collect();
+        for w in vis {
+            let c = self.clients.get_mut(&w).unwrap();
+            if c.isfloating && !c.isfullscreen && !c.autofloat {
+                c.isfloating = false;
+            }
+        }
+        if !self.arranges(m)
+            && let Some(i) = self.cfg.layouts.iter().position(|l| l.kind != LayoutKind::Float)
+        {
+            self.setlayout(LayoutSel::Index(i));
+        }
+        self.arrange(Some(m));
+    }
+
     unsafe fn togglefloating(&mut self) {
         let m = self.selmon;
         let Some(sel) = self.mons[m].sel else { return };
@@ -2775,6 +2821,16 @@ impl WindowManager {
         self.restack(self.selmon);
         let (ocx, ocy) = (self.clients[&sel].x, self.clients[&sel].y);
         let Some((px, py)) = self.getrootptr() else { return };
+        if self.cfg.drag_swap && !self.clients[&sel].isfloating && self.arranges(self.selmon) {
+            // drag_tiled = "swap": the window follows the mouse and is dropped
+            // into the tiling where you let go
+            xlib::XRaiseWindow(self.dpy, sel);
+            self.mouse_loop(2, |wm, e| {
+                xlib::XMoveWindow(wm.dpy, sel, ocx + (e.x_root - px), ocy + (e.y_root - py));
+            });
+            self.drop_tiled(sel);
+            return;
+        }
         self.mouse_loop(2, |wm, e| {
             let mut nx = ocx + (e.x_root - px);
             let mut ny = ocy + (e.y_root - py);
@@ -2800,6 +2856,45 @@ impl WindowManager {
             }
         });
         self.after_mouse(sel);
+    }
+
+    /// Finish a swap-drag: swap `sel` with the tiled window under the pointer,
+    /// moving it to that monitor if needed.
+    unsafe fn drop_tiled(&mut self, sel: Window) {
+        // put the window back where the tiling thinks it is, so arrange moves it
+        let (cx, cy) = (self.clients[&sel].x, self.clients[&sel].y);
+        xlib::XMoveWindow(self.dpy, sel, cx, cy);
+        let from = self.clients[&sel].mon;
+        let Some((x, y)) = self.getrootptr() else {
+            self.arrange(Some(from));
+            return;
+        };
+        let to = self.recttomon(x, y, 1, 1);
+        let target = self.tiled(to).into_iter().find(|&w| {
+            let c = &self.clients[&w];
+            w != sel && x >= c.x && x < c.x + c.width() && y >= c.y && y < c.y + c.height()
+        });
+        if to != from {
+            self.sendmon(sel, to);
+        }
+        if let Some(t) = target {
+            let list = &mut self.mons[to].clients;
+            if let (Some(a), Some(b)) = (list.iter().position(|w| *w == sel), list.iter().position(|w| *w == t)) {
+                if to == from {
+                    list.swap(a, b);
+                } else {
+                    let w = list.remove(a);
+                    let b = list.iter().position(|w| *w == t).unwrap_or(b);
+                    list.insert(b, w);
+                }
+            }
+        }
+        self.selmon = to;
+        self.focus(Some(sel));
+        self.arrange(Some(to));
+        if to != from {
+            self.arrange(Some(from));
+        }
     }
 
     unsafe fn resizemouse(&mut self) {
@@ -2839,6 +2934,55 @@ impl WindowManager {
     }
 }
 
+/// Fibonacci layouts: each window takes part of the remaining space and the
+/// next one splits what is left.
+/// - dwindle (like Hyprland): split along the longer side, new windows go right/down
+/// - spiral: the window goes left, top, right, bottom, ... spiralling inwards
+///
+/// The first split uses `mfact`, the rest split in half. When a split would be
+/// smaller than `min`, the remaining windows share the space that is left.
+pub fn fibonacci_rects(n: usize, area: (i32, i32, i32, i32), mfact: f32, ih: i32, iv: i32, min: i32, spiral: bool) -> Vec<(i32, i32, i32, i32)> {
+    let (mut x, mut y, mut w, mut h) = area;
+    let mut out = Vec::with_capacity(n);
+    for i in 0..n {
+        if i == n - 1 {
+            out.push((x, y, w, h));
+            break;
+        }
+        let ratio = if i == 0 { mfact } else { 0.5 };
+        // 0 = window left, 1 = top, 2 = right, 3 = bottom; the rest gets the other part
+        let dir = if spiral { i % 4 } else if w >= h { 0 } else { 1 };
+        let (len, gap) = if dir % 2 == 0 { (w, iv) } else { (h, ih) };
+        let first = ((len - gap) as f32 * ratio) as i32;
+        let rest = len - gap - first;
+        if first < min || rest < min {
+            out.extend(std::iter::repeat_n((x, y, w, h), n - i));
+            break;
+        }
+        match dir {
+            0 => {
+                out.push((x, y, first, h));
+                x += first + gap;
+                w = rest;
+            }
+            1 => {
+                out.push((x, y, w, first));
+                y += first + gap;
+                h = rest;
+            }
+            2 => {
+                out.push((x + rest + gap, y, first, h));
+                w = rest;
+            }
+            _ => {
+                out.push((x, y + rest + gap, w, first));
+                h = rest;
+            }
+        }
+    }
+    out
+}
+
 unsafe extern "C" fn xerror_dummy(_: *mut xlib::Display, _: *mut xlib::XErrorEvent) -> c_int {
     0
 }
@@ -2876,5 +3020,58 @@ pub fn exe_path() -> PathBuf {
             }
         }
         Err(_) => PathBuf::from("trwm"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fibonacci_rects;
+
+    fn overlap(a: (i32, i32, i32, i32), b: (i32, i32, i32, i32)) -> bool {
+        a.0 < b.0 + b.2 && b.0 < a.0 + a.2 && a.1 < b.1 + b.3 && b.1 < a.1 + a.3
+    }
+
+    #[test]
+    fn dwindle_matches_hyprland_shape() {
+        // 1000x600 landscape, 10px gaps, mfact 0.5
+        let r = fibonacci_rects(3, (0, 0, 1000, 600), 0.5, 10, 10, 20, false);
+        assert_eq!(r[0], (0, 0, 495, 600)); // master: left half
+        assert_eq!(r[1], (505, 0, 495, 295)); // then the right half splits top/bottom
+        assert_eq!(r[2], (505, 305, 495, 295));
+    }
+
+    #[test]
+    fn spiral_goes_round() {
+        let r = fibonacci_rects(5, (0, 0, 1600, 1600), 0.5, 0, 0, 10, true);
+        assert_eq!(r[0], (0, 0, 800, 1600)); // left
+        assert_eq!(r[1], (800, 0, 800, 800)); // top
+        assert_eq!(r[2], (1200, 800, 400, 800)); // right
+        assert_eq!(r[3], (800, 1200, 400, 400)); // bottom
+        assert_eq!(r[4], (800, 800, 400, 400)); // the rest
+    }
+
+    #[test]
+    fn layouts_fill_without_overlap() {
+        for spiral in [false, true] {
+            for n in 1..=8 {
+                let area = (10, 30, 2540, 1560);
+                let r = fibonacci_rects(n, area, 0.55, 10, 10, 50, spiral);
+                assert_eq!(r.len(), n);
+                for (i, a) in r.iter().enumerate() {
+                    assert!(a.2 > 0 && a.3 > 0);
+                    assert!(a.0 >= area.0 && a.1 >= area.1 && a.0 + a.2 <= area.0 + area.2 && a.1 + a.3 <= area.1 + area.3);
+                    for b in &r[i + 1..] {
+                        assert!(!overlap(*a, *b), "spiral={spiral} n={n}: {a:?} overlaps {b:?}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn tiny_space_stacks_instead_of_slivers() {
+        let r = fibonacci_rects(10, (0, 0, 200, 100), 0.5, 0, 0, 40, false);
+        assert_eq!(r.len(), 10);
+        assert!(r.iter().all(|a| a.2 >= 40 && a.3 >= 40));
     }
 }
