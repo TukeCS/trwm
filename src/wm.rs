@@ -753,6 +753,15 @@ impl WindowManager {
             Cmd::Zoom => self.zoom(),
             Cmd::KillClient => self.killclient(),
             Cmd::SetLayout(l) => self.setlayout(l),
+            Cmd::ToggleLayout(a, b) => {
+                let mon = &self.mons[self.selmon];
+                let cur = mon.lt[mon.sellt];
+                if self.find_layout(&a) == Some(cur) {
+                    self.setlayout(b);
+                } else {
+                    self.setlayout(a);
+                }
+            }
             Cmd::CycleLayout(d) => {
                 let m = &self.mons[self.selmon];
                 let n = self.cfg.layouts.len() as i32;
@@ -2659,18 +2668,27 @@ impl WindowManager {
         self.arrange(None);
     }
 
-    unsafe fn setlayout(&mut self, l: LayoutSel) {
-        let m = self.selmon;
-        let idx = match l {
+    /// Index of a layout given by number, kind name ("tile") or symbol ("[]=").
+    fn find_layout(&self, l: &LayoutSel) -> Option<usize> {
+        match l {
             LayoutSel::Toggle => None,
-            LayoutSel::Index(i) => Some(i),
+            LayoutSel::Index(i) => Some(*i),
             LayoutSel::Name(n) => self.cfg.layouts.iter().position(|l| {
-                l.symbol == n
-                    || format!("{:?}", l.kind).eq_ignore_ascii_case(&n)
+                l.symbol == *n
+                    || format!("{:?}", l.kind).eq_ignore_ascii_case(n)
                     || (n.eq_ignore_ascii_case("floating") && l.kind == LayoutKind::Float)
                     || (n.eq_ignore_ascii_case("fibonacci") && l.kind == LayoutKind::Dwindle)
             }),
-        };
+        }
+    }
+
+    unsafe fn setlayout(&mut self, l: LayoutSel) {
+        let m = self.selmon;
+        let idx = self.find_layout(&l);
+        if !matches!(l, LayoutSel::Toggle) && idx.is_none_or(|i| i >= self.cfg.layouts.len()) {
+            self.show_error(format!("setlayout: no layout {l:?} in your `layouts` list"));
+            return;
+        }
         let mon = &mut self.mons[m];
         let cur = mon.lt[mon.sellt];
         if idx.is_none() || idx != Some(cur) {

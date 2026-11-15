@@ -459,6 +459,8 @@ The first layout in the list is the default. Available layouts:
 | `dwindle` | Fibonacci, like Hyprland: each new window splits the last one, along its longer side (`fibonacci` works as a name too) |
 | `spiral` | Fibonacci that spirals inwards: left, top, right, bottom, … |
 
+The bar shows the symbol of the current layout next to the tags.
+
 `mfact` (`Mod+h` / `Mod+l`) sets the size of the first window in every layout. In
 `dwindle` and `spiral`, the following splits are always half and half.
 
@@ -630,6 +632,7 @@ and `0` means all tags.
 | `killclient()` | close the window |
 | `incnmaster(±1)` / `setmfact(±0.05)` | master count / size |
 | `setlayout(name or index)` / `cyclelayout(±1)` | change layout (no argument = previous) |
+| `togglelayout(a, b)` | switch to layout `b` if `a` is active, otherwise to `a`, e.g. `togglelayout("spiral", "dwindle")` |
 | `togglefloating()` / `togglefullscreen()` / `togglebar()` | |
 | `retile()` | put every floated window back into the tiling |
 | `focusmon(±1)` / `tagmon(±1)` | monitors |

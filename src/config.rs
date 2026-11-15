@@ -46,6 +46,8 @@ pub enum Cmd {
     Zoom,
     KillClient,
     SetLayout(LayoutSel),
+    /// switch to the second layout if the first is active, else to the first
+    ToggleLayout(LayoutSel, LayoutSel),
     CycleLayout(i32),
     ToggleFloating,
     Retile,
@@ -312,6 +314,15 @@ fn str_of(v: &Value) -> Option<String> {
     }
 }
 
+fn layout_sel(v: &Value, what: &str) -> mlua::Result<LayoutSel> {
+    Ok(match v {
+        Value::Nil => LayoutSel::Toggle,
+        Value::Integer(i) if *i >= 1 => LayoutSel::Index(*i as usize - 1),
+        Value::String(s) => LayoutSel::Name(s.to_string_lossy()),
+        other => return Err(lerr(format!("{what}: bad layout {other:?}"))),
+    })
+}
+
 fn spawn_arg(v: &Value) -> mlua::Result<Spawn> {
     match v {
         Value::String(s) => Ok(Spawn::Shell(s.to_string_lossy())),
@@ -440,12 +451,14 @@ fn install_api(lua: &Lua, queue: &Queue, dir: &Path) -> mlua::Result<()> {
     }));
     cmd!("zoom", |_v| Cmd::Zoom);
     cmd!("killclient", |_v| Cmd::KillClient);
-    cmd!("setlayout", |v| Cmd::SetLayout(match a0(&v) {
-        Value::Nil => LayoutSel::Toggle,
-        Value::Integer(i) if i >= 1 => LayoutSel::Index(i as usize - 1),
-        Value::String(s) => LayoutSel::Name(s.to_string_lossy()),
-        other => return Err(lerr(format!("setlayout: bad argument {other:?}"))),
-    }));
+    cmd!("setlayout", |v| Cmd::SetLayout(layout_sel(&a0(&v), "setlayout")?));
+    cmd!("togglelayout", |v| {
+        let (a, b) = (layout_sel(&a0(&v), "togglelayout")?, layout_sel(&a1(&v), "togglelayout")?);
+        if matches!(a, LayoutSel::Toggle) || matches!(b, LayoutSel::Toggle) {
+            return Err(lerr("togglelayout: needs two layouts, e.g. togglelayout(\"spiral\", \"dwindle\")"));
+        }
+        Cmd::ToggleLayout(a, b)
+    });
     cmd!("cyclelayout", |v| Cmd::CycleLayout(int_arg(&a0(&v), 1) as i32));
     cmd!("togglefloating", |_v| Cmd::ToggleFloating);
     cmd!("retile", |_v| Cmd::Retile);
