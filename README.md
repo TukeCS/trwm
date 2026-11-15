@@ -96,12 +96,12 @@ To **build** trwm you need:
 
 | what | why |
 |---|---|
-| `feh` | sets the wallpaper (optional) |
-| a [Nerd Font](https://www.nerdfonts.com/) (`Symbols Nerd Font Mono`) | icons for the tags and status bar in the default config |
+| `kitty` | the terminal in the default config |
+| `rofi` | the app launcher in the default config |
+| `feh` | sets the wallpaper (optional, off by default) |
+| `xss-lock` | locks the screen on suspend (optional) |
 
-The default config also launches these programs. Swap them for your own in the config:
-`kitty`, `rofi`, `firefox`, `maim` + `xclip` (screenshots), `wpctl` (PipeWire volume),
-`brightnessctl`, `xss-lock`.
+You can swap kitty and rofi for any other programs in the config.
 
 > **Rust version:** if your distro's Rust is older than 1.88 (`rustc --version`), install
 > it with [rustup](https://rustup.rs) instead:
@@ -194,6 +194,9 @@ trwm default-config > ~/.config/trwm/config.lua
 sudo install -m644 extra/trwm.pam /etc/pam.d/trwm
 ```
 
+**Your own config is never overwritten:** trwm reads `~/.config/trwm/config.lua`. The
+`config.lua` in this repo is only the default you start from.
+
 **Updating:** `git pull && cargo install --path .`, then press `Mod+Shift+r` to switch to the
 new version without closing any windows.
 
@@ -248,12 +251,6 @@ Then pick **trwm** in the session menu at login.
 |---|---|
 | `Mod+Return` | terminal (kitty) |
 | `Mod+p` | launcher (rofi) |
-| `Mod+e` | file manager (yazi) |
-| `Mod+n` | Neovim |
-| `Mod+w` | browser (firefox) |
-| `Print` | screenshot of the whole screen (saved + copied) |
-| `Mod+Print` | screenshot of a selected area |
-| media / brightness keys | volume, mute, mic mute, brightness |
 
 **Windows**
 
@@ -274,9 +271,10 @@ Then pick **trwm** in the session menu at login.
 | `Mod+t` | `[]=` tile (default) |
 | `Mod+m` | `[M]` monocle: one window at a time, fullscreen-ish |
 | `Mod+f` | `><>` floating |
-| `Mod+s` | `TTT` bottom stack |
-| `Mod+o` | `###` grid |
 | `Mod+space` | switch back to the previous layout |
+
+The `bstack`, `grid` and `deck` layouts are built in too. Add them to `layouts` in your
+config and give them keys (see [Layouts](#layouts)).
 
 **Tags**
 
@@ -350,13 +348,13 @@ local a = trwm.action
 
 return {
   modkey   = "Super",                -- "Super" or "Alt"
-  fonts    = { "monospace:size=12", "Symbols Nerd Font Mono:size=13" },
-  borderpx = 3,
+  fonts    = { "monospace:size=10" },  -- add more fonts as fallbacks, e.g. a Nerd Font for icons
+  borderpx = 1,
   gaps     = { inner = 10, outer = 10, smart = true },
-  tags     = { "1", "2", "3", "4", "5", "6", "7", "8", "9" },
+  tags     = { "1", "2", "3", "4", "5", "6", "7", "8", "9" },  -- any text, emoji or icons
   colors   = {
-    norm = { fg = "#c4bfdb", bg = "#17141f", border = "#2e2740" },
-    sel  = { fg = "#dddfff", bg = "#54487a", border = "#6e56af" },
+    norm = { fg = "#bbbbbb", bg = "#222222", border = "#444444" },
+    sel  = { fg = "#eeeeee", bg = "#005577", border = "#005577" },
   },
   keys = {
     { "Mod+Return", a.spawn("kitty") },
@@ -420,8 +418,13 @@ layouts = {
   { "[]=", "tile" },
   { "><>", "float" },
   { "[M]", "monocle" },
+  { "TTT", "bstack" },
+  { "###", "grid" },
 }
 ```
+
+Switch to a layout with `a.setlayout("grid")` in a key binding, for example
+`{ "Mod+o", a.setlayout("grid") }`.
 
 ### Other options
 

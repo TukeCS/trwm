@@ -1,9 +1,10 @@
--- trwm config — tuke's rust window manager
+-- trwm default config
 --
--- Copy to ~/.config/trwm/config.lua (`trwm default-config > ~/.config/trwm/config.lua`).
--- It is reloaded automatically whenever you save it (or any other .lua file
--- in the same directory). If it has an error, trwm keeps the old config and
--- shows the error in the bar.
+-- Copy it to ~/.config/trwm/config.lua and change whatever you like:
+--   mkdir -p ~/.config/trwm && trwm default-config > ~/.config/trwm/config.lua
+--
+-- The config reloads automatically when you save it. If it has an error,
+-- trwm keeps the old config and shows the error in the bar.
 --
 -- Key bindings are plain Lua functions. `a.<name>(args)` is shorthand for
 -- `function() trwm.<name>(args) end`, so you can also write your own:
@@ -11,68 +12,17 @@
 
 local a = trwm.action
 
--- programs ------------------------------------------------------------------
-
 local term     = "kitty"
 local launcher = { "rofi", "-show", "drun" }
-local files    = { "kitty", "--class", "yazi", "-e", "yazi" }
-local code     = { "kitty", "--class", "nvim", "-e", "nvim" }
-local browser  = "firefox"
-
-local shotdir  = "mkdir -p ~/Pictures/Screenshots && f=~/Pictures/Screenshots/$(date +%F_%H-%M-%S).png && "
-local toclip   = ' "$f" && xclip -selection clipboard -t image/png -i "$f"'
-
--- `trwm msg refresh` makes the status bar update right away
-local volup    = "wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+; trwm msg refresh"
-local voldown  = "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-; trwm msg refresh"
-local volmute  = "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle; trwm msg refresh"
-local micmute  = "wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"
-local brightup = "brightnessctl set 5%+; trwm msg refresh"
-local brightdn = "brightnessctl -n set 5%-; trwm msg refresh"
-
--- Gentoo purple palette (matches Neovim + kitty) ------------------------------
-
-local col = {
-  bg        = "#17141f", -- bar background
-  border    = "#2e2740", -- unfocused window border
-  fg        = "#c4bfdb", -- bar text / status
-  selfg     = "#dddfff", -- selected tag/title text
-  selbg     = "#54487a", -- selected tag/title bg
-  selborder = "#6e56af", -- focused window border
-  red       = "#a33a4a",
-}
 
 -- keys ------------------------------------------------------------------------
 
 local keys = {
-  -- apps
   { "Mod+p",            a.spawn(launcher) },
   { "Mod+Return",       a.spawn(term) },
-  { "Mod+e",            a.spawn(files) },
-  { "Mod+n",            a.spawn(code) },
-  { "Mod+w",            a.spawn(browser) },
-  { "Mod+Shift+l",      a.lock() },               -- built-in locker (slock)
+  { "Mod+Shift+l",      a.lock() },
 
-  -- gaps: Super+g on/off, Super+= / Super+- bigger/smaller, Super+Shift+g default
-  { "Mod+g",            a.togglegaps() },
-  { "Mod+Shift+g",      a.defaultgaps() },
-  { "Mod+equal",        a.incgaps(1) },
-  { "Mod+minus",        a.incgaps(-1) },
-
-  -- screenshots: Print = full screen, Super+Print = select area
-  { "Print",            a.spawn(shotdir .. "maim" .. toclip) },
-  { "Mod+Print",        a.spawn(shotdir .. "maim -s -b 2 -c 0.431,0.337,0.686,1" .. toclip) },
-
-  -- media keys
-  { "XF86AudioRaiseVolume",  a.spawn(volup) },
-  { "XF86AudioLowerVolume",  a.spawn(voldown) },
-  { "XF86AudioMute",         a.spawn(volmute) },
-  { "XF86AudioMicMute",      a.spawn(micmute) },
-  { "XF86MonBrightnessUp",   a.spawn(brightup) },
-  { "XF86MonBrightnessDown", a.spawn(brightdn) },
-
-  -- windows and layouts
-  { "Mod+b",            a.togglebar() },
+  -- windows
   { "Mod+j",            a.focusstack(1) },
   { "Mod+k",            a.focusstack(-1) },
   { "Mod+i",            a.incnmaster(1) },
@@ -80,18 +30,25 @@ local keys = {
   { "Mod+h",            a.setmfact(-0.05) },
   { "Mod+l",            a.setmfact(0.05) },
   { "Mod+Shift+Return", a.zoom() },
-  { "Mod+Tab",          a.view() },                -- previous tags
   { "Mod+Shift+c",      a.killclient() },
+  { "Mod+Shift+space",  a.togglefloating() },
+  { "Mod+Shift+f",      a.togglefullscreen() },
+  { "Mod+b",            a.togglebar() },
+
+  -- layouts
   { "Mod+t",            a.setlayout("tile") },
   { "Mod+f",            a.setlayout("float") },
   { "Mod+m",            a.setlayout("monocle") },
-  { "Mod+s",            a.setlayout("bstack") },
-  { "Mod+o",            a.setlayout("grid") },
-  { "Mod+space",        a.setlayout() },           -- toggle last layout
-  { "Mod+Shift+space",  a.togglefloating() },
-  { "Mod+Shift+f",      a.togglefullscreen() },
+  { "Mod+space",        a.setlayout() },           -- back to the previous layout
+
+  -- gaps: Mod+= / Mod+- bigger/smaller, Mod+g on/off, Mod+Shift+g default size
+  { "Mod+equal",        a.incgaps(1) },
+  { "Mod+minus",        a.incgaps(-1) },
+  { "Mod+g",            a.togglegaps() },
+  { "Mod+Shift+g",      a.defaultgaps() },
 
   -- tags and monitors
+  { "Mod+Tab",          a.view() },                -- previous tags
   { "Mod+0",            a.view(0) },               -- 0 = all tags
   { "Mod+Shift+0",      a.tag(0) },
   { "Mod+comma",        a.focusmon(-1) },
@@ -100,8 +57,8 @@ local keys = {
   { "Mod+Shift+period", a.tagmon(1) },
 
   -- trwm itself
-  { "Mod+Shift+r",      a.restart() },             -- re-exec (keeps windows) after rebuilding
   { "Mod+Ctrl+r",       a.reload() },              -- reload config (also happens on save)
+  { "Mod+Shift+r",      a.restart() },             -- restart in place, keeps all windows
   { "Mod+Shift+q",      a.quit() },
 }
 
@@ -113,74 +70,42 @@ for i = 1, 9 do
   table.insert(keys, { "Mod+Ctrl+Shift+" .. i, a.toggletag(i) })
 end
 
--- the config -------------------------------------------------------------------
+-- the config ------------------------------------------------------------------
 
 return {
-  modkey   = "Super",                 -- what "Mod" means in keys/buttons
-  fonts    = { "monospace:size=12", "Symbols Nerd Font Mono:size=13" },
+  modkey   = "Super",                 -- what "Mod" means: "Super" or "Alt"
+  fonts    = { "monospace:size=10" },
 
-  borderpx = 3,
+  borderpx = 1,
   snap     = 32,
-  gaps     = { inner = 10, outer = 10, smart = true },  -- or inner_h/inner_v/outer_h/outer_v
+  gaps     = { inner = 10, outer = 10, smart = true },  -- smart: no outer gap with one window
   showbar  = true,
   topbar   = true,
-  hide_empty_tags = false,
 
+  -- dwm's default colours
   colors = {
-    norm = { fg = col.fg,    bg = col.bg,    border = col.border },
-    sel  = { fg = col.selfg, bg = col.selbg, border = col.selborder },
+    norm = { fg = "#bbbbbb", bg = "#222222", border = "#444444" },
+    sel  = { fg = "#eeeeee", bg = "#005577", border = "#005577" },
   },
 
-  -- wallpaper (set with feh). A file, or a directory to pick a random image
-  -- from. mode = fill | center | max | scale | tile.
-  -- interval > 0 picks a new random one every N seconds (directories only).
-  -- You can also set it at runtime:  trwm msg 'trwm.wallpaper("~/Pictures/x.png")'
-  wallpaper = { path = "~/Pictures/Wallpapers/bat.png", mode = "fill" },
-  -- wallpaper = { path = "~/Pictures/Wallpapers", mode = "fill", interval = 1800 },  -- random, rotates
+  tags = { "1", "2", "3", "4", "5", "6", "7", "8", "9" },
 
-  -- Nerd Font icons: home, terminal, web, code, files, chat, video, VMs, games
-  tags = { "\u{f015}", "\u{f120}", "\u{f269}", "\u{f121}", "\u{f07b}",
-           "\u{f086}", "\u{f03d}", "\u{f1b2}", "\u{f11b}" },
-
-  -- class / instance / title are substring matches (like dwm)
-  -- tag = N (1-based) or tags = { N, M }; floating; monitor
+  -- class / instance / title are substring matches (run `xprop` to find them)
+  -- tag = N puts the window on tag N, floating = true makes it float
   rules = {
-    -- float on whatever tag is open
-    { class = "rog-control-center", floating = true },
-    { class = "Gimp",               floating = true },
-
-    { class = "firefox",  tag = 3 },
-    { class = "nvim",     tag = 4 },        -- Neovim started with Super+n
-    { class = "yazi",     tag = 5 },        -- yazi started with Super+e
-    { class = "discord",  tag = 6 },
-    { class = "obs",      tag = 7 },
-    { instance = "kdenlive", tag = 7 },
-    { instance = "qemu",     tag = 8 },
-
-    -- games: Steam, CS2 and every Proton game; Steam's small dialogs float
-    { instance = "steamwebhelper", tag = 9 },
-    { instance = "steamwebhelper", title = "Friends List",   tag = 9, floating = true },
-    { instance = "steamwebhelper", title = "Steam Settings", tag = 9, floating = true },
-    { instance = "steamwebhelper", title = "Properties",     tag = 9, floating = true },
-    { class = "cs2",        tag = 9 },
-    { class = "steam_app_", tag = 9 },
+    { class = "Gimp", floating = true },
   },
 
   mfact          = 0.55,
   nmaster        = 1,
   resizehints    = false,
   lockfullscreen = true,
-  refresh_rate   = 240,   -- Hz, for moving/resizing with the mouse
-  focus_follows_mouse = true,
 
-  -- first entry is the default; available: tile monocle float bstack grid deck
+  -- first entry is the default; also available: bstack grid deck
   layouts = {
     { "[]=", "tile" },
     { "><>", "float" },
     { "[M]", "monocle" },
-    { "TTT", "bstack" },
-    { "###", "grid" },
-    { "[D]", "deck" },
   },
 
   keys = keys,
@@ -201,51 +126,29 @@ return {
     { "tagbar", "Mod+Button3", a.toggletag() },
   },
 
-  -- built-in status bar (slstatus). Each entry: { source, format, argument }
-  --   source: a builtin name, "run_command", or a Lua function returning a string
-  --   format: %s is replaced by the value, %% is a literal %
-  --   interval = N (seconds) per entry to update less often
-  -- builtins: datetime cpu_perc cpu_freq ram_perc ram_used ram_free ram_total
-  --   swap_perc swap_used battery_perc battery_state battery_remaining temp
-  --   uptime load_avg disk_perc disk_free disk_used disk_total netspeed_rx
-  --   netspeed_tx ipv4 wifi_perc kernel_release hostname username num_files entropy
-  -- (they are also callable from Lua: trwm.sys.cpu_perc())
-  -- set `status = nil` to use `xsetroot -name` / external slstatus instead.
+  -- status bar. Each entry: { source, format, argument }
+  --   %s is replaced by the value, %% is a literal %
+  --   more sources: battery_perc, temp, disk_perc, netspeed_rx, uptime, ...
+  --   (see the README), "run_command" for any shell command, or a Lua function
   status = {
-    interval = 1,
-    { "cpu_perc", "\u{f4bc} %s%%  " },
-    { "ram_perc", "\u{f035b} %s%%  " },
-    { "run_command", "%s  ",
-      [[wpctl get-volume @DEFAULT_AUDIO_SINK@ | awk '/MUTED/{print " muted";exit} {printf " %d%%", $2*100+0.5}']] },
-    { "run_command", "\u{f00df} %s  ", "brightnessctl -m | cut -d, -f4" },
-    { "run_command", "\u{f0379} %s  ", "supergfxctl -g | sed 's/AsusMuxDgpu/dGPU/;s/Integrated/iGPU/'", interval = 10 },
-    { "run_command", "\u{f0e7} %s  ", "cat /sys/firmware/acpi/platform_profile", interval = 5 },
-    { "battery_state", "\u{f0079} %s", "BAT0" },
-    { "battery_perc",  "%s%%  ", "BAT0" },
-    { "datetime", "\u{f017} %s ", "%T" },
+    { "cpu_perc", "cpu %s%% | " },
+    { "ram_perc", "ram %s%% | " },
+    { "datetime", "%s", "%a %d %b %H:%M" },
   },
 
-  -- built-in screen locker (slock): Super+Shift+l, `trwm lock`,
-  -- or `xss-lock -- trwm lock` in your .xinitrc
+  -- screen locker (Mod+Shift+l or `trwm lock`): slock's colours
   lock = {
-    colors = {
-      init   = col.bg,          -- locked
-      input  = col.selborder,   -- typing
-      failed = col.red,         -- wrong password
-      text   = col.selfg,       -- clock text
-    },
-    fail_on_clear = true,       -- clearing the input shows the failed colour
-    monitor_off   = 5,          -- seconds until the screen turns off (0 = never)
-    clock         = true,       -- show time/date (false = plain slock look)
-    font          = "monospace:size=64",
-    small_font    = "monospace:size=16",
-    -- message    = "be right back",
-    idle          = 0,          -- lock after N idle seconds (0 = off)
-    pam_service   = "trwm",   -- uses /etc/pam.d/trwm if present, else "login"
+    colors = { init = "black", input = "#005577", failed = "#CC3333" },
+    fail_on_clear = true,
+    clock         = false,     -- true shows the time and date
+    monitor_off   = 0,         -- turn the screen off after N seconds (0 = never)
+    idle          = 0,         -- lock after N idle seconds (0 = off)
   },
 
-  -- run once when trwm starts (not on reload or restart)
-  autostart = {
-    -- "dunst", "picom -b", "udiskie",
-  },
+  -- wallpaper, set with feh (off by default). A file, or a folder to pick a
+  -- random image from; mode = fill | center | max | scale | tile
+  -- wallpaper = { path = "~/Pictures/wall.png", mode = "fill" },
+
+  -- commands to run once when trwm starts
+  autostart = {},
 }
