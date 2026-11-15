@@ -1,0 +1,7 @@
+#%PAM-1.0
+# PAM service for the trwm screen locker.
+# Install with:  sudo install -m644 extra/trwm.pam /etc/pam.d/trwm
+#
+# Only checks your password. Unlike the "login" service, it does not use
+# pam_faillock, so typos at the lock screen can't lock your account.
+auth  required  pam_unix.so

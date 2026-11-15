@@ -1,0 +1,13 @@
+[package]
+name = "trwm"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "tuke's rust window manager: a dwm-inspired X11 tiling WM with a built-in status bar and screen locker, configured in Lua"
+license = "MIT"
+readme = "README.md"
+
+[dependencies]
+libc = "0.2.191"
+mlua = { version = "0.12.2", features = ["lua54", "vendored"] }
+x11 = { version = "2.21.0", features = ["xlib", "xft", "xinerama", "xss", "dpms", "xrender"] }

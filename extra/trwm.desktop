@@ -1,0 +1,5 @@
+[Desktop Entry]
+Name=trwm
+Comment=tuke's rust window manager
+Exec=trwm
+Type=XSession
