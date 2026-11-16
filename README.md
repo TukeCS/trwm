@@ -502,12 +502,15 @@ The config trwm writes on first start already has `dark_mode = true`. trwm then:
   `~/.config/gtk-4.0/settings.ini`. That covers GTK 3 and 4 apps, and Firefox and Chromium,
   which follow GTK. Other lines in those files are kept.
 - starts programs with `ADW_DEBUG_COLOR_SCHEME=prefer-dark`, for libadwaita (GNOME) apps.
+- starts programs with `QT_QPA_PLATFORMTHEME=gtk3`, so Qt 6 apps (6.5 or newer) take their
+  dark or light colours from the GTK settings above. If you set `QT_QPA_PLATFORMTHEME`
+  yourself (to `qt6ct`, `kde`…), trwm leaves it alone and Qt follows that instead.
 - sets `color-scheme` with `gsettings` if the GNOME schema (`gsettings-desktop-schemas`) is
   installed. With `xdg-desktop-portal-gtk` running too, apps that ask the desktop portal
   (Electron, Qt 6, newer Firefox and Chromium) switch right away.
 
-Apps that are already open keep their look until you restart them. Qt 5 apps need their own
-tool (`qt5ct` / `qt6ct`) or `QT_QPA_PLATFORMTHEME=gtk3`.
+Apps that are already open keep their look until you restart them. Qt 5 has no dark mode of
+its own: Qt 5 apps need `qt5ct` (or Kvantum) with a dark colour scheme.
 
 ### Keyboard
 
@@ -768,7 +771,7 @@ middle click.
 | `screen` | unset | screen blanking and monitor power saving, see [Screen blanking](#screen-blanking) |
 | `keyboard` | unset | keyboard layout, key repeat and num lock, see [Keyboard](#keyboard) |
 | `cursor_size` / `cursor_theme` | unset | mouse cursor size in px / theme name, see [DPI and cursor](#dpi-and-cursor) |
-| `dark_mode` | unset | `true` = dark GTK/libadwaita/portal apps, `false` = light, see [Dark mode](#dark-mode) |
+| `dark_mode` | unset | `true` = dark GTK/libadwaita/Qt/portal apps, `false` = light, see [Dark mode](#dark-mode) |
 | `showbar` / `topbar` | `true` / `true` | show the bar / put it at the top |
 | `hide_empty_tags` | `false` | only show tags that have windows |
 | `mfact` | `0.55` | size of the master area (0.05–0.95) |
@@ -958,7 +961,7 @@ Run **`trwm doctor`** first: it finds most problems and tells you the fix.
 | Screen turns off by itself | `screen = { blank = false, off = false }` |
 | Wrong keyboard layout | set `keyboard = "fr"` (or your layout) in the config; `trwm keyboard` shows what is active |
 | `Mod+1`…`9` don't work on AZERTY | they should; if not, run `trwm keyboard` and check the layout is right |
-| GTK apps / Firefox are white | set `dark_mode = true` and restart the apps, see [Dark mode](#dark-mode) |
+| GTK / Qt apps or Firefox are white | set `dark_mode = true` and restart the apps, see [Dark mode](#dark-mode) |
 | Java apps show a grey window | add `export _JAVA_AWT_WM_NONREPARENTING=1` to `.xinitrc` |
 
 ## License

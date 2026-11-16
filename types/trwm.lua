@@ -188,7 +188,7 @@
 ---@field dpi integer? screen DPI: 96 normal, 144 = 150%, 192 = 200%
 ---@field cursor_size integer? mouse cursor size in pixels
 ---@field cursor_theme string? cursor theme from /usr/share/icons or ~/.icons
----@field dark_mode boolean? dark look for GTK/libadwaita/portal apps (unset = leave them alone)
+---@field dark_mode boolean? dark look for GTK/libadwaita/Qt/portal apps (unset = leave them alone)
 ---@field screen trwm.Screen? screen blanking and monitor power saving
 ---@field monitors trwm.Monitor[]? monitor resolution and arrangement
 ---@field keyboard (string|trwm.Keyboard)? keyboard layout, key repeat, num lock

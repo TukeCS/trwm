@@ -6,6 +6,9 @@
 //!   `gtk-application-prefer-dark-theme` key in ~/.config/gtk-{3,4}.0/settings.ini
 //! - libadwaita apps without a portal backend: `ADW_DEBUG_COLOR_SCHEME` in
 //!   the environment of programs trwm starts (see [`env`])
+//! - Qt 6.5+: `QT_QPA_PLATFORMTHEME=gtk3` in the environment of programs trwm
+//!   starts, so Qt takes its palette (dark or light) from the GTK settings
+//!   above. Left alone when the user already picked a theme (qt6ct, kde...).
 //! - the desktop portal (Firefox, Chromium, Electron, Qt, libadwaita), when
 //!   the GNOME schema is installed: `gsettings ... color-scheme`
 
@@ -38,11 +41,33 @@ pub fn apply(dark: Option<bool>) {
 }
 
 /// Environment for programs trwm starts.
-pub fn env(dark: Option<bool>) -> Option<(&'static str, &'static str)> {
-    match dark? {
-        true => Some(("ADW_DEBUG_COLOR_SCHEME", "prefer-dark")),
-        false => Some(("ADW_DEBUG_COLOR_SCHEME", "prefer-light")),
+pub fn env(dark: Option<bool>) -> Vec<(&'static str, &'static str)> {
+    let Some(dark) = dark else { return vec![] };
+    let mut v = vec![("ADW_DEBUG_COLOR_SCHEME", if dark { "prefer-dark" } else { "prefer-light" })];
+    if qt_theme().is_none() {
+        v.push(("QT_QPA_PLATFORMTHEME", "gtk3"));
     }
+    v
+}
+
+/// The Qt platform theme the user set themselves, if any.
+pub fn qt_theme() -> Option<String> {
+    std::env::var("QT_QPA_PLATFORMTHEME").ok().filter(|t| !t.is_empty())
+}
+
+/// Is Qt 6's gtk3 platform theme plugin installed? (None = no Qt 6 found.)
+pub fn has_qt_gtk3() -> Option<bool> {
+    let dirs = [
+        "/usr/lib/qt6/plugins",
+        "/usr/lib64/qt6/plugins",
+        "/usr/lib/x86_64-linux-gnu/qt6/plugins",
+        "/usr/lib/aarch64-linux-gnu/qt6/plugins",
+    ];
+    let qt6: Vec<_> = dirs.iter().map(Path::new).filter(|d| d.is_dir()).collect();
+    if qt6.is_empty() {
+        return None;
+    }
+    Some(qt6.iter().any(|d| d.join("platformthemes/libqgtk3.so").exists()))
 }
 
 /// Is the `org.gnome.desktop.interface` schema installed? (Without it

@@ -415,6 +415,14 @@ pub fn run(cfg_path: Option<&Path>) -> i32 {
         } else {
             r.warn("~/.config/gtk-{3,4}.0/settings.ini don't match dark_mode yet", "trwm writes them when it starts or reloads the config");
         }
+        match (crate::appearance::qt_theme(), crate::appearance::has_qt_gtk3()) {
+            (Some(t), _) => r.ok(&format!("Qt apps use QT_QPA_PLATFORMTHEME={t}, set its colours there")),
+            (None, Some(true)) | (None, None) => r.ok("Qt 6 apps follow GTK (QT_QPA_PLATFORMTHEME=gtk3)"),
+            (None, Some(false)) => r.warn(
+                "Qt 6's gtk3 platform theme isn't installed, so Qt apps stay light",
+                "install it: qt6-base with USE=gtk (Gentoo), qt6-gtk-platformtheme (Debian/Ubuntu)",
+            ),
+        }
         if !crate::appearance::has_gnome_schema() {
             r.ok("apps that ask the desktop portal (Electron, Qt 6) may stay light: for them, install");
             r.fix("gsettings-desktop-schemas and xdg-desktop-portal-gtk (optional)");

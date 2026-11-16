@@ -975,9 +975,7 @@ impl WindowManager {
         if let Some(t) = &self.cfg.cursor_theme {
             cmd.env("XCURSOR_THEME", t);
         }
-        if let Some((k, v)) = appearance::env(self.cfg.dark_mode) {
-            cmd.env(k, v);
-        }
+        cmd.envs(appearance::env(self.cfg.dark_mode));
         unsafe {
             cmd.pre_exec(|| {
                 libc::setsid();
