@@ -1065,7 +1065,12 @@ impl Config {
             keyboard: parse_keyboard(t.get("keyboard")?)?,
             screen: parse_screen(t.get("screen")?)?,
             input: crate::input::InputCfg {
-                mouse: crate::input::parse(t.get("mouse")?, "mouse")?,
+                mouse: {
+                    // mice default to no acceleration; set accel = "adaptive" to turn it on
+                    let mut m = crate::input::parse(t.get("mouse")?, "mouse")?;
+                    m.accel.get_or_insert_with(|| "flat".into());
+                    m
+                },
                 touchpad: crate::input::parse(t.get("touchpad")?, "touchpad")?,
             },
             monitors: crate::outputs::parse(t.get("monitors")?)?,
@@ -1176,6 +1181,11 @@ mod tests {
         assert_eq!(c.monitors[0].pos, crate::outputs::Pos::RightOf("eDP-1".into()));
         assert!(c.monitors[1].off);
         assert!(Config::from_source("return { mouse = { accel = 'fast' } }", "t", None).is_err());
+        // mouse acceleration is off unless asked for; touchpads are left alone
+        let c = Config::from_source("return {}", "t", None).unwrap();
+        assert_eq!((c.input.mouse.accel.as_deref(), c.input.touchpad.accel.as_deref()), (Some("flat"), None));
+        let c = Config::from_source("return { mouse = { accel = 'adaptive' } }", "t", None).unwrap();
+        assert_eq!(c.input.mouse.accel.as_deref(), Some("adaptive"));
         assert!(Config::from_source("return { mouse = { speed = 3 } }", "t", None).is_err());
         assert!(Config::from_source("return { monitors = { { output = 'X', mode = '1080p' } } }", "t", None).is_err());
         assert!(Config::from_source("return { monitors = { { output = 'X', rotate = 'sideways' } } }", "t", None).is_err());

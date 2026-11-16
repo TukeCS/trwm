@@ -155,7 +155,7 @@
 
 ---@class trwm.Pointer
 ---@field speed number? -1.0 (slowest) to 1.0 (fastest)
----@field accel ("flat"|"adaptive")? "flat" = no acceleration
+---@field accel ("flat"|"adaptive")? "flat" = no acceleration (mouse default), "adaptive" = acceleration
 ---@field natural_scroll boolean? scroll like on a phone
 ---@field left_handed boolean? swap the left and right buttons
 ---@field middle_emulation boolean? left + right together = middle click

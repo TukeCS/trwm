@@ -570,7 +570,7 @@ including ones plugged in later:
 ```lua
 mouse = {
   speed            = 0.0,          -- -1.0 (slowest) to 1.0 (fastest)
-  accel            = "flat",       -- "flat" (no acceleration, gamers) or "adaptive"
+  accel            = "flat",       -- "flat" (no acceleration, the default) or "adaptive"
   natural_scroll   = false,
   left_handed      = false,
   middle_emulation = false,        -- left+right together = middle click
@@ -763,7 +763,7 @@ middle click.
 |---|---|---|
 | `default_layout` | `"spiral"` in the default config | the layout every tag starts with, see [Layouts](#layouts) |
 | `dpi` | unset | screen DPI for HiDPI screens, see [DPI and cursor](#dpi-and-cursor) |
-| `mouse` / `touchpad` | unset | pointer speed, acceleration, scrolling, tapping, see [Mouse and touchpad](#mouse-and-touchpad) |
+| `mouse` / `touchpad` | unset (mouse `accel = "flat"`) | pointer speed, acceleration, scrolling, tapping, see [Mouse and touchpad](#mouse-and-touchpad) |
 | `monitors` | unset | resolution, refresh rate and arrangement, see [Monitors](#monitors) |
 | `screen` | unset | screen blanking and monitor power saving, see [Screen blanking](#screen-blanking) |
 | `keyboard` | unset | keyboard layout, key repeat and num lock, see [Keyboard](#keyboard) |

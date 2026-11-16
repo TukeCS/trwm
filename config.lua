@@ -171,7 +171,7 @@ return {
   -- shows your devices and their current settings.
   -- mouse = {
   --   speed            = 0.0,        -- -1.0 (slowest) to 1.0 (fastest)
-  --   accel            = "flat",     -- "flat" = no acceleration (games), "adaptive" = normal
+  --   accel            = "flat",     -- "flat" = no acceleration (the default), "adaptive" = normal
   --   natural_scroll   = false,      -- true = scroll like on a phone
   --   left_handed      = false,      -- swap the left and right buttons
   --   middle_emulation = false,      -- left + right together = middle click

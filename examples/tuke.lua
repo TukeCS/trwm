@@ -145,7 +145,7 @@ return {
   },
   mouse = {                             -- the Logitech PRO X 2
     speed  = 0.0,                       -- -1.0 .. 1.0
-    accel  = "adaptive",                -- "flat" = no acceleration
+    accel  = "flat",                    -- "flat" = no acceleration
     natural_scroll = false,
   },
   touchpad = {
@@ -260,7 +260,7 @@ return {
     { "cpu_perc", "\u{f4bc} %s%%  " },
     { "ram_perc", "\u{f035b} %s%%  " },
     { "run_command", "%s  ",
-      [[wpctl get-volume @DEFAULT_AUDIO_SINK@ | awk '/MUTED/{print " muted";exit} {printf " %d%%", $2*100+0.5}']] },
+      "wpctl get-volume @DEFAULT_AUDIO_SINK@ | awk '/MUTED/{print \"\u{f0581} muted\";exit} {printf \"\u{f057e} %d%%\", $2*100+0.5}'" },
     { "run_command", "\u{f00df} %s  ", "brightnessctl -m | cut -d, -f4" },
     { "run_command", "\u{f0379} %s  ", "supergfxctl -g | sed 's/AsusMuxDgpu/dGPU/;s/Integrated/iGPU/'", interval = 10 },
     { "run_command", "\u{f0e7} %s  ", "cat /sys/firmware/acpi/platform_profile", interval = 5 },
