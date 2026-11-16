@@ -423,6 +423,22 @@ pub fn run(cfg_path: Option<&Path>) -> i32 {
                 "install it: qt6-base with USE=gtk (Gentoo), qt6-gtk-platformtheme (Debian/Ubuntu)",
             ),
         }
+        if dark && crate::appearance::has_qt5() {
+            match (crate::appearance::qt_style(), crate::appearance::qt5_dark_style()) {
+                (Some(st), _) => r.ok(&format!("Qt 5 apps use QT_STYLE_OVERRIDE={st}")),
+                (None, Some(st)) => r.ok(&format!("Qt 5 apps use the {st} style")),
+                (None, None) => r.warn(
+                    "Qt 5 has no dark mode of its own, so Qt 5 apps stay light",
+                    "install adwaita-qt (or Kvantum) for Qt 5; trwm then uses its dark style",
+                ),
+            }
+        }
+        if dark && crate::appearance::has_gtk2() && !crate::appearance::has_gtk2_dark_theme() {
+            r.warn(
+                "GTK 2 apps stay light: the Adwaita-dark GTK 2 theme isn't installed",
+                "install gnome-themes-extra",
+            );
+        }
         if !crate::appearance::has_gnome_schema() {
             r.ok("apps that ask the desktop portal (Electron, Qt 6) may stay light: for them, install");
             r.fix("gsettings-desktop-schemas and xdg-desktop-portal-gtk (optional)");

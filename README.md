@@ -509,8 +509,18 @@ The config trwm writes on first start already has `dark_mode = true`. trwm then:
   installed. With `xdg-desktop-portal-gtk` running too, apps that ask the desktop portal
   (Electron, Qt 6, newer Firefox and Chromium) switch right away.
 
-Apps that are already open keep their look until you restart them. Qt 5 has no dark mode of
-its own: Qt 5 apps need `qt5ct` (or Kvantum) with a dark colour scheme.
+- Qt 5 has no dark mode of its own, so trwm starts programs with a dark Qt style if one is
+  installed: `QT_STYLE_OVERRIDE=Adwaita-Dark` with `adwaita-qt`, or `kvantum-dark` with
+  Kvantum (pick a Kvantum theme that has a dark variant). Without either, Qt 5 apps stay
+  light. A `QT_STYLE_OVERRIDE` you set yourself is kept.
+- sets `gtk-theme-name="Adwaita-dark"` in `~/.gtkrc-2.0` for old GTK 2 apps, if that theme
+  (`gnome-themes-extra`) is installed. A theme you picked yourself is kept.
+- passes these variables to `dbus-update-activation-environment`, so programs started by
+  D-Bus or systemd (rather than by trwm) get them too.
+
+Apps that are already open keep their look until you restart them. `trwm doctor` tells you
+what is missing. Java and plain X apps (xterm…) have no dark switch; set their colours
+themselves.
 
 ### Keyboard
 
@@ -771,7 +781,7 @@ middle click.
 | `screen` | unset | screen blanking and monitor power saving, see [Screen blanking](#screen-blanking) |
 | `keyboard` | unset | keyboard layout, key repeat and num lock, see [Keyboard](#keyboard) |
 | `cursor_size` / `cursor_theme` | unset | mouse cursor size in px / theme name, see [DPI and cursor](#dpi-and-cursor) |
-| `dark_mode` | unset | `true` = dark GTK/libadwaita/Qt/portal apps, `false` = light, see [Dark mode](#dark-mode) |
+| `dark_mode` | unset | `true` = dark GTK 2/3/4, libadwaita, Qt 5/6 and portal apps, `false` = light, see [Dark mode](#dark-mode) |
 | `showbar` / `topbar` | `true` / `true` | show the bar / put it at the top |
 | `hide_empty_tags` | `false` | only show tags that have windows |
 | `mfact` | `0.55` | size of the master area (0.05–0.95) |
