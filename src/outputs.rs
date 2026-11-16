@@ -27,7 +27,9 @@ pub enum Pos {
 /// One entry of `monitors = { ... }`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct MonitorCfg {
-    pub output: String,
+    /// the output's name, or several (the first one that exists is used: the
+    /// same port can have a different name depending on the GPU mode)
+    pub names: Vec<String>,
     /// None = the monitor's preferred mode
     pub mode: Option<(u32, u32)>,
     /// None = the highest rate for the mode (or the preferred mode's rate)
@@ -129,14 +131,45 @@ fn pick_mode(o: &Output, c: &MonitorCfg) -> Result<Mode, String> {
 /// (crtc plans, screen size, primary output)
 pub type Arrangement = (Vec<Plan>, (u32, u32), Option<u64>);
 
+/// The name of the output `c` refers to on this machine right now: the first
+/// of its names that is connected, else the first that exists.
+fn resolve<'a>(outputs: &'a [Output], c: &MonitorCfg) -> Option<&'a str> {
+    let find = |connected: bool| c.names.iter().find_map(|n| outputs.iter().find(|o| &o.name == n && (o.connected || !connected)));
+    find(true).or_else(|| find(false)).map(|o| o.name.as_str())
+}
+
+/// Config entries whose output doesn't exist (they are skipped).
+pub fn missing(outputs: &[Output], cfg: &[MonitorCfg]) -> Vec<String> {
+    cfg.iter().filter(|c| resolve(outputs, c).is_none()).map(|c| c.names.join(" / ")).collect()
+}
+
 pub fn plan(outputs: &[Output], cfg: &[MonitorCfg]) -> Result<Arrangement, String> {
-    for c in cfg {
-        if !outputs.iter().any(|o| o.name == c.output) {
-            let names: Vec<&str> = outputs.iter().map(|o| o.name.as_str()).collect();
-            return Err(format!("monitors: no output called '{}' (outputs: {})", c.output, names.join(", ")));
-        }
-    }
-    let cfg_of = |o: &Output| cfg.iter().find(|c| c.output == o.name);
+    // entries for outputs that don't exist (a GPU mode with other output names,
+    // a dock that isn't attached, ...) are skipped; the rest use the real names,
+    // also in right_of = ... and friends
+    let real = |n: &String| -> String {
+        cfg.iter()
+            .find(|c| c.names.contains(n))
+            .and_then(|c| resolve(outputs, c))
+            .map_or_else(|| n.clone(), str::to_string)
+    };
+    let cfg: Vec<(String, MonitorCfg)> = cfg
+        .iter()
+        .filter_map(|c| {
+            let name = resolve(outputs, c)?.to_string();
+            let mut c = c.clone();
+            c.pos = match c.pos {
+                Pos::RightOf(r) => Pos::RightOf(real(&r)),
+                Pos::LeftOf(r) => Pos::LeftOf(real(&r)),
+                Pos::Above(r) => Pos::Above(real(&r)),
+                Pos::Below(r) => Pos::Below(real(&r)),
+                Pos::SameAs(r) => Pos::SameAs(real(&r)),
+                p => p,
+            };
+            Some((name, c))
+        })
+        .collect();
+    let cfg_of = |o: &Output| cfg.iter().find(|(n, _)| *n == o.name).map(|(_, c)| c);
 
     // what each output should do
     struct Want {
@@ -240,8 +273,8 @@ pub fn plan(outputs: &[Output], cfg: &[MonitorCfg]) -> Result<Arrangement, Strin
     }
     let primary = cfg
         .iter()
-        .filter(|c| c.primary && !c.off)
-        .find_map(|c| outputs.iter().find(|o| o.name == c.output && o.connected).map(|o| o.id));
+        .filter(|(_, c)| c.primary && !c.off)
+        .find_map(|(n, _)| outputs.iter().find(|o| &o.name == n && o.connected).map(|o| o.id));
     Ok((plans, (sw, sh), primary))
 }
 
@@ -447,7 +480,15 @@ pub fn parse(t: Option<mlua::Table>) -> mlua::Result<Vec<MonitorCfg>> {
     let mut out = vec![];
     for (i, e) in t.sequence_values::<mlua::Table>().enumerate() {
         let e = e?;
-        let output: String = e.get("output").map_err(|_| err(format!("monitors[{}]: needs output = \"name\" (see `trwm monitors`)", i + 1)))?;
+        let need = || err(format!("monitors[{}]: needs output = \"name\" or {{ \"name\", \"other name\" }} (see `trwm monitors`)", i + 1));
+        let names: Vec<String> = match e.get::<mlua::Value>("output")? {
+            mlua::Value::String(s) => vec![s.to_str()?.to_string()],
+            mlua::Value::Table(t) => t.sequence_values::<String>().collect::<mlua::Result<_>>().map_err(|_| need())?,
+            _ => return Err(need()),
+        };
+        if names.is_empty() {
+            return Err(need());
+        }
         let mode = match e.get::<Option<String>>("mode")? {
             None => None,
             Some(m) => {
@@ -484,7 +525,7 @@ pub fn parse(t: Option<mlua::Table>) -> mlua::Result<Vec<MonitorCfg>> {
             Some(r) => parse_rotation(&r).ok_or_else(|| err(format!("monitors[{}]: rotate should be normal, left, right or inverted", i + 1)))?,
         };
         out.push(MonitorCfg {
-            output,
+            names,
             mode,
             rate: e.get("rate")?,
             pos,
@@ -523,7 +564,7 @@ mod tests {
     }
 
     fn mc(name: &str, pos: Pos) -> MonitorCfg {
-        MonitorCfg { output: name.into(), mode: None, rate: None, pos, primary: false, rotation: ROT_0, off: false }
+        MonitorCfg { names: vec![name.into()], mode: None, rate: None, pos, primary: false, rotation: ROT_0, off: false }
     }
 
     #[test]
@@ -575,8 +616,30 @@ mod tests {
         // explicit off
         let (p, _, _) = plan(&o, &[MonitorCfg { off: true, ..mc("eDP-1", Pos::Auto) }]).unwrap();
         assert_eq!(p.iter().find(|p| p.output == 1).map(|p| p.mode), Some(0));
-        // typos
-        assert!(plan(&o, &[mc("HDMI-2", Pos::Auto)]).unwrap_err().contains("no output called 'HDMI-2'"));
+        // outputs that don't exist are skipped (and reported by `missing`)
+        assert!(plan(&o, &[mc("HDMI-2", Pos::Auto)]).is_ok());
+        assert_eq!(missing(&o, &[mc("HDMI-2", Pos::Auto), mc("eDP-1", Pos::Auto)]), vec!["HDMI-2".to_string()]);
         assert!(plan(&o, &[MonitorCfg { mode: Some((800, 600)), ..mc("eDP-1", Pos::Auto) }]).unwrap_err().contains("has no mode 800x600"));
+    }
+
+    #[test]
+    fn alternative_names() {
+        // hybrid graphics: the same ports get other names
+        let o = vec![out(1, "eDP-1-0", true, Some((0, 0))), out(2, "HDMI-A-1-0", true, None)];
+        let c = |a: &str, b: &str, pos| MonitorCfg { names: vec![a.into(), b.into()], ..mc(a, pos) };
+        let cfg = [
+            MonitorCfg { primary: true, ..c("eDP", "eDP-1-0", Pos::Auto) },
+            c("HDMI-A-0", "HDMI-A-1-0", Pos::RightOf("eDP".into())),
+        ];
+        let (p, size, prim) = plan(&o, &cfg).unwrap();
+        assert_eq!(size, (3840, 1080));
+        assert_eq!(p.iter().find(|p| p.output == 2).map(|p| p.x), Some(1920));
+        assert_eq!(prim, Some(1));
+        assert!(missing(&o, &cfg).is_empty());
+        // a connected name wins over one that only exists
+        let o = vec![out(1, "eDP-1-0", false, None), out(2, "eDP-1", true, Some((0, 0)))];
+        let (p, _, prim) = plan(&o, &[MonitorCfg { primary: true, ..c("eDP-1-0", "eDP-1", Pos::Auto) }]).unwrap();
+        assert!(p.iter().all(|p| p.output == 2));
+        assert_eq!(prim, Some(2));
     }
 }

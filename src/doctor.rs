@@ -454,7 +454,11 @@ pub fn run(cfg_path: Option<&Path>) -> i32 {
         if !cfg.monitors.is_empty() {
             let screen = unsafe { xlib::XDefaultScreen(dpy) };
             let root = unsafe { xlib::XRootWindow(dpy, screen) };
-            match crate::outputs::query(dpy, root).map(|o| crate::outputs::plan(&o, &cfg.monitors)) {
+            let outs = crate::outputs::query(dpy, root);
+            for m in outs.as_deref().map(|o| crate::outputs::missing(o, &cfg.monitors)).unwrap_or_default() {
+                r.warn(&format!("monitors: no output called {m} right now, skipping it"), "`trwm monitors` lists the names; output = { \"a\", \"b\" } accepts several");
+            }
+            match outs.map(|o| crate::outputs::plan(&o, &cfg.monitors)) {
                 Some(Ok(_)) => r.ok("monitors: the arrangement is valid"),
                 Some(Err(e)) => r.fail(&e, "fix `monitors` in the config (`trwm monitors` lists the names and modes)"),
                 None => r.warn("can't check monitors: RandR unavailable", ""),

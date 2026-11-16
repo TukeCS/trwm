@@ -153,8 +153,8 @@ return {
     disable_while_typing = true,
   },
   monitors = {
-    { output = "eDP", mode = "2560x1600", rate = 240, primary = true },
-    -- { output = "HDMI-A-0", mode = "1920x1080", rate = 144, right_of = "eDP" },
+    { output = { "eDP", "eDP-1" }, mode = "2560x1600", rate = 240, primary = true },
+    -- { output = { "HDMI-A-0", "HDMI-A-1-0" }, mode = "1920x1080", rate = 144, right_of = "eDP" },
   },
   screen = { blank = false, off = false },  -- never blank (was `xset s off -dpms`)
   -- cursor_theme = "Adwaita",
@@ -285,6 +285,7 @@ return {
     -- message    = "be right back",
     idle          = 0,          -- lock after N idle seconds (0 = off)
     pam_service   = "trwm",   -- uses /etc/pam.d/trwm if present, else "login"
+    lockout       = false,    -- or { attempts = 3, minutes = 10 }
   },
 
   -- run once when trwm starts (not on reload or restart)

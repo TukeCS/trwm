@@ -266,6 +266,9 @@ fn monitors_cmd(cfg: config::Config, sub: Option<&str>) {
                 let secs = |s: u32| if s == 0 { "never".to_string() } else { format!("after {s}s") };
                 println!("screen: blank {}, monitor off {}", secs(blank), off.map_or("never".into(), secs));
                 if !cfg.monitors.is_empty() {
+                    for m in outputs::missing(&outs, &cfg.monitors) {
+                        println!("config: no output called {m} right now, skipped");
+                    }
                     match outputs::plan(&outs, &cfg.monitors) {
                         Ok((plans, (w, h), _)) => {
                             let n = plans.iter().filter(|p| p.mode != 0).count();

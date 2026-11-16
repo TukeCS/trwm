@@ -236,6 +236,10 @@ pub struct LockCfg {
     pub small_font: String,
     pub message: Option<String>,
     pub idle: u64,
+    /// after this many wrong passwords in a row, ignore input for
+    /// `lockout_secs` (0 = never, the default)
+    pub lockout_attempts: u32,
+    pub lockout_secs: u64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -406,7 +410,8 @@ const TOP: &[&str] = &[
 ];
 const GAPS: &[&str] = &["inner", "outer", "inner_h", "inner_v", "outer_h", "outer_v", "smart", "enabled"];
 const SCHEME: &[&str] = &["fg", "bg", "border"];
-const LOCK: &[&str] = &["colors", "fail_on_clear", "clock", "message", "font", "small_font", "monitor_off", "idle", "pam_service"];
+const LOCK: &[&str] = &["colors", "fail_on_clear", "clock", "message", "font", "small_font", "monitor_off", "idle", "pam_service", "lockout"];
+const LOCK_LOCKOUT: &[&str] = &["attempts", "minutes"];
 const LOCK_COLORS: &[&str] = &["init", "input", "failed", "text"];
 const WALLPAPER: &[&str] = &["path", "mode", "interval"];
 const KEYBOARD: &[&str] = &["layout", "variant", "model", "options", "repeat_delay", "repeat_rate", "numlock"];
@@ -472,6 +477,9 @@ fn validate(t: &Table) -> mlua::Result<()> {
         check_names(&l, LOCK, "lock")?;
         if let Ok(Some(c)) = l.get::<Option<Table>>("colors") {
             check_names(&c, LOCK_COLORS, "lock.colors")?;
+        }
+        if let Ok(Some(o)) = l.get::<Option<Table>>("lockout") {
+            check_names(&o, LOCK_LOCKOUT, "lock.lockout")?;
         }
     }
     for (key, names) in [("wallpaper", WALLPAPER), ("keyboard", KEYBOARD), ("mouse", MOUSE), ("touchpad", TOUCHPAD), ("screen", SCREEN)] {
@@ -987,6 +995,13 @@ impl Config {
         let lock = {
             let l: Table = t.get::<Option<Table>>("lock")?.unwrap_or(lua.create_table()?);
             let c: Table = l.get::<Option<Table>>("colors")?.unwrap_or(lua.create_table()?);
+            // lockout = false (default) | true (3 attempts, 10 minutes) | { attempts = 3, minutes = 10 }
+            let (lockout_attempts, lockout_secs) = match l.get::<mlua::Value>("lockout")? {
+                mlua::Value::Nil | mlua::Value::Boolean(false) => (0, 0),
+                mlua::Value::Boolean(true) => (3, 600),
+                mlua::Value::Table(o) => (get::<u32>(&o, "attempts", 3)?, (get::<f64>(&o, "minutes", 10.0)? * 60.0).max(0.0) as u64),
+                _ => return Err(lerr("lock.lockout: should be false, true or { attempts = 3, minutes = 10 }")),
+            };
             LockCfg {
                 init: get(&c, "init", "black".to_string())?,
                 input: get(&c, "input", "#005577".to_string())?,
@@ -1000,6 +1015,8 @@ impl Config {
                 small_font: get(&l, "small_font", "monospace:size=14".to_string())?,
                 message: l.get("message")?,
                 idle: get(&l, "idle", 0)?,
+                lockout_attempts,
+                lockout_secs,
             }
         };
 

@@ -134,6 +134,9 @@ return {
   -- monitors: resolution, refresh rate and arrangement. Run `trwm monitors` to
   -- see the names of your outputs and their modes. Outputs you don't list stay
   -- as they are; a listed monitor turns on by itself when you plug it in.
+  -- Outputs that don't exist right now are skipped. The same port can have
+  -- another name with hybrid graphics: output = { "eDP", "eDP-1" } takes
+  -- the first one that is connected (right_of = ... may use either name).
   -- monitors = {
   --   { output = "eDP-1",  mode = "1920x1080", rate = 60, primary = true },
   --   { output = "HDMI-1", mode = "2560x1440", rate = 144, right_of = "eDP-1" },
@@ -333,6 +336,7 @@ return {
     monitor_off   = 0,             -- switch the monitor off N seconds after locking (0 = never)
     idle          = 0,             -- lock by itself after N seconds without input (0 = never)
     -- pam_service = "trwm",       -- uses /etc/pam.d/trwm if it exists, else "login"
+    -- lockout = { attempts = 3, minutes = 10 },  -- wait after too many wrong passwords (off by default)
   },
 
   -- Startup --------------------------------------------------------------------------

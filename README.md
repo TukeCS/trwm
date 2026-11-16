@@ -592,6 +592,10 @@ monitors = {
 - **Hotplug:** when you plug a monitor in, trwm applies its settings automatically. A
   monitor that's unplugged is switched off, so no windows get lost on it.
 - **Only listed outputs change.** Outputs that aren't in the list stay as they are.
+- **Missing outputs are skipped.** With hybrid graphics (or a dock) the same port can have
+  another name, e.g. `eDP` vs `eDP-1`. List both with `output = { "eDP", "eDP-1" }`:
+  the first one that is connected (else exists) is used, and `right_of` and friends can use either name.
+  `trwm doctor` and `trwm monitors` say which entries were skipped.
 - **No flicker:** if the monitors already match the config, nothing is touched, so saving
   the config doesn't make your screen blink.
 - **Your DPI setting stays** when the screen size changes.
@@ -822,6 +826,10 @@ lock = {
   the locker uses the `login` PAM service. On many distros (Gentoo, Arch, Fedora…) `login`
   includes `pam_faillock`, so three typos at the lock screen would lock your account for
   10 minutes.
+- **No lockout by default.** With the PAM file installed you can mistype as often as you like.
+  To make the lock screen wait after too many wrong passwords, set
+  `lockout = { attempts = 3, minutes = 10 }` (or `lockout = true` for those values). This only
+  pauses the lock screen; it doesn't lock your account for `sudo` or logins.
 
 ---
 

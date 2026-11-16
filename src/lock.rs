@@ -6,7 +6,7 @@
 
 use std::os::raw::{c_char, c_int, c_uint};
 use std::ptr;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use x11::{dpms, xinerama, xlib};
 
@@ -106,8 +106,12 @@ pub fn run(cfg: &LockCfg, dpi: Option<u32>) -> Result<(), String> {
         let mut password: Vec<u8> = Vec::with_capacity(256);
         let mut state = State::Init;
         let mut failures = 0u32;
+        // `lockout`: wrong passwords in a row, and until when input is ignored
+        let mut in_a_row = 0u32;
+        let mut locked_until: Option<Instant> = None;
+        let wait = |until: Option<Instant>| until.map(|t| t.saturating_duration_since(Instant::now()).as_secs() + 1);
         for s in &screens {
-            draw(dpy, s, cfg, state, failures);
+            draw(dpy, s, cfg, state, failures, None);
         }
 
         let fd = xlib::XConnectionNumber(dpy);
@@ -116,9 +120,13 @@ pub fn run(cfg: &LockCfg, dpi: Option<u32>) -> Result<(), String> {
             if xlib::XPending(dpy) == 0 {
                 let mut pfd = libc::pollfd { fd, events: libc::POLLIN, revents: 0 };
                 libc::poll(&mut pfd, 1, 1000);
-                if cfg.clock {
+                if locked_until.is_some_and(|t| Instant::now() >= t) {
+                    locked_until = None;
+                    in_a_row = 0;
+                }
+                if cfg.clock || locked_until.is_some() {
                     for s in &screens {
-                        draw(dpy, s, cfg, state, failures);
+                        draw(dpy, s, cfg, state, failures, wait(locked_until));
                     }
                 }
                 continue;
@@ -143,6 +151,15 @@ pub fn run(cfg: &LockCfg, dpi: Option<u32>) -> Result<(), String> {
                 if is_function_key {
                     continue;
                 }
+                if locked_until.is_some_and(|t| Instant::now() >= t) {
+                    locked_until = None;
+                    in_a_row = 0;
+                }
+                if locked_until.is_some() {
+                    // too many wrong passwords: ignore typing until the time is up
+                    pam::wipe(std::slice::from_raw_parts_mut(buf.as_mut_ptr() as *mut u8, buf.len()));
+                    continue;
+                }
                 let prev = state;
                 match ks {
                     x11::keysym::XK_Return => {
@@ -150,6 +167,10 @@ pub fn run(cfg: &LockCfg, dpi: Option<u32>) -> Result<(), String> {
                             running = false;
                         } else {
                             failures += 1;
+                            in_a_row += 1;
+                            if cfg.lockout_attempts > 0 && in_a_row >= cfg.lockout_attempts {
+                                locked_until = Some(Instant::now() + Duration::from_secs(cfg.lockout_secs));
+                            }
                             xlib::XBell(dpy, 100);
                             state = State::Failed;
                         }
@@ -183,7 +204,7 @@ pub fn run(cfg: &LockCfg, dpi: Option<u32>) -> Result<(), String> {
                         state
                     };
                     for s in &screens {
-                        draw(dpy, s, cfg, state, failures);
+                        draw(dpy, s, cfg, state, failures, wait(locked_until));
                     }
                 }
                 pam::wipe(std::slice::from_raw_parts_mut(buf.as_mut_ptr() as *mut u8, buf.len()));
@@ -192,7 +213,7 @@ pub fn run(cfg: &LockCfg, dpi: Option<u32>) -> Result<(), String> {
                 for s in &screens {
                     xlib::XRaiseWindow(dpy, s.win);
                     if ev.get_type() == xlib::Expose {
-                        draw(dpy, s, cfg, state, failures);
+                        draw(dpy, s, cfg, state, failures, wait(locked_until));
                     }
                 }
             }
@@ -279,7 +300,8 @@ fn now(fmt: &str) -> String {
     crate::status::builtin("datetime", Some(fmt))
 }
 
-unsafe fn draw(dpy: *mut xlib::Display, s: &Screen, cfg: &LockCfg, state: State, failures: u32) {
+/// `wait`: seconds left of a `lockout`, if one is running
+unsafe fn draw(dpy: *mut xlib::Display, s: &Screen, cfg: &LockCfg, state: State, failures: u32, wait: Option<u64>) {
     let bg = s.colors[match state {
         State::Init => 0,
         State::Input => 1,
@@ -300,6 +322,9 @@ unsafe fn draw(dpy: *mut xlib::Display, s: &Screen, cfg: &LockCfg, state: State,
     }
     if failures > 0 && cfg.clock {
         lines.push((format!("{failures} failed attempt{}", if failures == 1 { "" } else { "s" }), &s.small));
+    }
+    if let Some(w) = wait {
+        lines.push((format!("too many attempts, try again in {}:{:02}", w / 60, w % 60), &s.small));
     }
     let lh = |d: &Drw| d.font_h() + d.font_h() / 3;
     let total: u32 = lines.iter().map(|(_, d)| lh(d)).sum();

@@ -133,6 +133,11 @@
 ---@field monitor_off integer? switch the monitor off N seconds after locking (0 = never)
 ---@field idle integer? lock by itself after N seconds without input (0 = never)
 ---@field pam_service string? PAM service (default "trwm", falls back to "login")
+---@field lockout (boolean|trwm.Lockout)? wait after too many wrong passwords (default false; true = 3 attempts, 10 minutes)
+
+---@class trwm.Lockout
+---@field attempts integer? wrong passwords in a row before the wait (default 3)
+---@field minutes number? how long typing is ignored (default 10)
 
 ---@class trwm.Wallpaper
 ---@field path string an image, or a folder to pick a random image from
