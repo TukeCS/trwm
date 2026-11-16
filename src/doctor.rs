@@ -401,6 +401,26 @@ pub fn run(cfg_path: Option<&Path>) -> i32 {
         }
     }
 
+    // --- dark mode ----------------------------------------------------------
+    if let Some(dark) = cfg.dark_mode {
+        r.section("Dark mode");
+        let want = if dark { "1" } else { "0" };
+        let ok = ["gtk-3.0", "gtk-4.0"].iter().all(|v| {
+            let p = crate::config::config_dir_of(v).join("settings.ini");
+            let s = std::fs::read_to_string(p).unwrap_or_default();
+            crate::appearance::set_ini_key(&s, "Settings", "gtk-application-prefer-dark-theme", want) == s
+        });
+        if ok {
+            r.ok(&format!("GTK 3/4 prefer the {} look", if dark { "dark" } else { "light" }));
+        } else {
+            r.warn("~/.config/gtk-{3,4}.0/settings.ini don't match dark_mode yet", "trwm writes them when it starts or reloads the config");
+        }
+        if !crate::appearance::has_gnome_schema() {
+            r.ok("apps that ask the desktop portal (Electron, Qt 6) may stay light: for them, install");
+            r.fix("gsettings-desktop-schemas and xdg-desktop-portal-gtk (optional)");
+        }
+    }
+
     // --- lock screen ------------------------------------------------------
     r.section("Lock screen");
     if Path::new("/etc/pam.d/trwm").exists() {

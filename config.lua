@@ -128,6 +128,10 @@ return {
   -- cursor_size  = 36,             -- mouse cursor size in pixels (24 is normal at 96 dpi)
   -- cursor_theme = "Adwaita",      -- a cursor theme from /usr/share/icons or ~/.icons
 
+  -- dark look for GTK apps, Firefox, Chromium, Electron... (false = light,
+  -- remove the line to leave your GTK settings alone). Restart open apps after changing it.
+  dark_mode = true,
+
   -- when the screen blanks and the monitor switches off, in seconds (false = never)
   -- screen = { blank = 600, off = 900 },
 

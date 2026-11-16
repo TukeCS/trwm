@@ -261,6 +261,8 @@ pub struct Config {
     pub cursor_size: Option<u32>,
     /// mouse cursor theme (Xcursor.theme / XCURSOR_THEME)
     pub cursor_theme: Option<String>,
+    /// dark look for GTK/libadwaita/portal apps; None = leave it alone
+    pub dark_mode: Option<bool>,
     /// keyboard layout, key repeat and num lock
     pub keyboard: crate::keyboard::KeyboardCfg,
     /// screen blanking / monitor power saving
@@ -317,9 +319,14 @@ pub fn expand_tilde(p: &str) -> String {
 }
 
 pub fn config_dir() -> PathBuf {
+    config_dir_of("trwm")
+}
+
+/// ~/.config/<name> (or $XDG_CONFIG_HOME/<name>)
+pub fn config_dir_of(name: &str) -> PathBuf {
     match std::env::var("XDG_CONFIG_HOME") {
-        Ok(d) if !d.is_empty() => PathBuf::from(d).join("trwm"),
-        _ => PathBuf::from(home()).join(".config/trwm"),
+        Ok(d) if !d.is_empty() => PathBuf::from(d).join(name),
+        _ => PathBuf::from(home()).join(".config").join(name),
     }
 }
 
@@ -403,7 +410,7 @@ fn layout_sel(v: &Value, what: &str) -> mlua::Result<LayoutSel> {
 // ---------------------------------------------------------------------------
 
 const TOP: &[&str] = &[
-    "modkey", "fonts", "font", "dpi", "cursor_size", "cursor_theme", "screen", "monitors", "keyboard", "mouse", "touchpad",
+    "modkey", "fonts", "font", "dpi", "cursor_size", "cursor_theme", "dark_mode", "screen", "monitors", "keyboard", "mouse", "touchpad",
     "borderpx", "gaps", "colors", "showbar", "topbar", "hide_empty_tags", "wallpaper", "tags", "rules", "default_layout",
     "layouts", "mfact", "nmaster", "drag_tiled", "focus_follows_mouse", "snap", "resizehints", "lockfullscreen",
     "refresh_rate", "keys", "buttons", "status", "lock", "autostart",
@@ -1050,6 +1057,11 @@ impl Config {
             dpi,
             cursor_size,
             cursor_theme: t.get("cursor_theme")?,
+            dark_mode: match t.get::<mlua::Value>("dark_mode")? {
+                mlua::Value::Nil => None,
+                mlua::Value::Boolean(b) => Some(b),
+                _ => return Err(lerr("dark_mode: should be true or false")),
+            },
             keyboard: parse_keyboard(t.get("keyboard")?)?,
             screen: parse_screen(t.get("screen")?)?,
             input: crate::input::InputCfg {
@@ -1184,5 +1196,8 @@ mod tests {
         assert!(Config::from_source(&format!("return {{ {l}, default_layout = 'grid' }}"), "t", None).is_err());
         let c = Config::from_source("return { cursor_size = 36, cursor_theme = 'Adwaita' }", "t", None).unwrap();
         assert_eq!((c.cursor_size, c.cursor_theme.as_deref()), (Some(36), Some("Adwaita")));
+        let c = Config::from_source("return { dark_mode = true }", "t", None).unwrap();
+        assert_eq!(c.dark_mode, Some(true));
+        assert!(Config::from_source("return { dark_mode = 'yes' }", "t", None).is_err());
     }
 }

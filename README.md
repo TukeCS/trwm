@@ -487,6 +487,28 @@ programs that are already open keep their size until you restart them. The curso
 apply to trwm's own cursor. Leave any of these unset to keep whatever your X server and
 `~/.Xresources` already set, so you won't need `xrdb` for these settings.
 
+### Dark mode
+
+Without a desktop environment, GTK apps (and Firefox, Chromium…) think you want the light
+look. One line fixes that:
+
+```lua
+dark_mode = true,    -- false = light; leave it out to keep your own GTK settings
+```
+
+The config trwm writes on first start already has `dark_mode = true`. trwm then:
+
+- sets `gtk-application-prefer-dark-theme` in `~/.config/gtk-3.0/settings.ini` and
+  `~/.config/gtk-4.0/settings.ini`. That covers GTK 3 and 4 apps, and Firefox and Chromium,
+  which follow GTK. Other lines in those files are kept.
+- starts programs with `ADW_DEBUG_COLOR_SCHEME=prefer-dark`, for libadwaita (GNOME) apps.
+- sets `color-scheme` with `gsettings` if the GNOME schema (`gsettings-desktop-schemas`) is
+  installed. With `xdg-desktop-portal-gtk` running too, apps that ask the desktop portal
+  (Electron, Qt 6, newer Firefox and Chromium) switch right away.
+
+Apps that are already open keep their look until you restart them. Qt 5 apps need their own
+tool (`qt5ct` / `qt6ct`) or `QT_QPA_PLATFORMTHEME=gtk3`.
+
 ### Keyboard
 
 Set your keyboard layout, key repeat and num lock in the config, instead of with
@@ -746,6 +768,7 @@ middle click.
 | `screen` | unset | screen blanking and monitor power saving, see [Screen blanking](#screen-blanking) |
 | `keyboard` | unset | keyboard layout, key repeat and num lock, see [Keyboard](#keyboard) |
 | `cursor_size` / `cursor_theme` | unset | mouse cursor size in px / theme name, see [DPI and cursor](#dpi-and-cursor) |
+| `dark_mode` | unset | `true` = dark GTK/libadwaita/portal apps, `false` = light, see [Dark mode](#dark-mode) |
 | `showbar` / `topbar` | `true` / `true` | show the bar / put it at the top |
 | `hide_empty_tags` | `false` | only show tags that have windows |
 | `mfact` | `0.55` | size of the master area (0.05–0.95) |
@@ -935,6 +958,7 @@ Run **`trwm doctor`** first: it finds most problems and tells you the fix.
 | Screen turns off by itself | `screen = { blank = false, off = false }` |
 | Wrong keyboard layout | set `keyboard = "fr"` (or your layout) in the config; `trwm keyboard` shows what is active |
 | `Mod+1`…`9` don't work on AZERTY | they should; if not, run `trwm keyboard` and check the layout is right |
+| GTK apps / Firefox are white | set `dark_mode = true` and restart the apps, see [Dark mode](#dark-mode) |
 | Java apps show a grey window | add `export _JAVA_AWT_WM_NONREPARENTING=1` to `.xinitrc` |
 
 ## License

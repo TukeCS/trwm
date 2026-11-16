@@ -16,7 +16,7 @@ use x11::{xcursor, xinerama, xrandr, xss};
 
 use crate::bsp;
 use crate::keyboard;
-use crate::{input, outputs, screen};
+use crate::{appearance, input, outputs, screen};
 use crate::config::{self, Click, Cmd, Config, Gaps, LayoutKind, LayoutSel, Spawn};
 use crate::drw::{Drw, Scheme};
 use crate::status::Status;
@@ -389,6 +389,7 @@ impl WindowManager {
         xlib::XSelectInput(dpy, self.root, wa.event_mask);
         self.apply_keyboard();
         self.apply_monitors();
+        appearance::apply(self.cfg.dark_mode);
         screen::apply(self.dpy, &self.cfg.screen);
         input::apply(self.dpy, &self.cfg.input);
         self.xi_opcode = input::watch_hotplug(self.dpy, self.root);
@@ -707,6 +708,9 @@ impl WindowManager {
         if old.cursor_size != self.cfg.cursor_size || old.cursor_theme != self.cfg.cursor_theme {
             self.apply_cursor();
         }
+        if old.dark_mode != self.cfg.dark_mode {
+            appearance::apply(self.cfg.dark_mode);
+        }
         if old.wallpaper != self.cfg.wallpaper {
             self.apply_wallpaper(true);
         }
@@ -970,6 +974,9 @@ impl WindowManager {
         }
         if let Some(t) = &self.cfg.cursor_theme {
             cmd.env("XCURSOR_THEME", t);
+        }
+        if let Some((k, v)) = appearance::env(self.cfg.dark_mode) {
+            cmd.env(k, v);
         }
         unsafe {
             cmd.pre_exec(|| {

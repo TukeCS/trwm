@@ -130,6 +130,7 @@ return {
   dpi      = 144,                 -- screen DPI (replaces `xrandr --dpi 144` in .xinitrc)
   cursor_size = 36,               -- mouse cursor size (replaces Xcursor.size in ~/.Xresources)
   -- cursor_theme = "Adwaita",
+  dark_mode   = true,             -- dark GTK apps, Firefox, Chromium, ...
 
   -- hardware: what setxkbmap, xset, xinput and xrandr would do. Every field
   -- is optional; `trwm keyboard`, `trwm input` and `trwm monitors` show the

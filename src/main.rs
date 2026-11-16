@@ -11,6 +11,7 @@ mod config;
 mod doctor;
 mod drw;
 mod input;
+mod appearance;
 mod outputs;
 mod screen;
 mod keyboard;
