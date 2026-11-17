@@ -878,7 +878,7 @@ impl WindowManager {
                 Cmd::Retile => self.retile(),
                 Cmd::ToggleFullscreen => {
                     if let Some(s) = self.mons[self.selmon].sel {
-                        let fs = self.clients[&s].isfullscreen;
+                        let Some(fs) = self.clients.get(&s).map(|c| c.isfullscreen) else { return };
                         self.setfullscreen(s, !fs);
                     }
                 }
@@ -1221,7 +1221,7 @@ impl WindowManager {
     }
 
     fn is_visible(&self, w: Window) -> bool {
-        let c = &self.clients[&w];
+        let Some(c) = self.clients.get(&w) else { return false };
         let m = &self.mons[c.mon];
         c.tags & m.tagset[m.seltags] != 0
     }
@@ -1380,7 +1380,7 @@ impl WindowManager {
     /// Remember tags + monitor on the window so `restart` keeps them.
     unsafe fn save_client_tags(&self, w: Window) {
         unsafe {
-            let c = &self.clients[&w];
+            let Some(c) = self.clients.get(&w) else { return };
             let data: [c_long; 2] = [c.tags as c_long, self.mons[c.mon].num as c_long];
             xlib::XChangeProperty(self.dpy, w, self.tags_atom, xlib::XA_CARDINAL, 32, xlib::PropModeReplace, data.as_ptr() as *const c_uchar, 2);
         }
@@ -1658,7 +1658,7 @@ impl WindowManager {
         }
         let mon = &self.mons[m];
         let curtags = mon.tagset[mon.seltags];
-        let seltags = mon.sel.map(|s| self.clients[&s].tags).unwrap_or(0);
+        let seltags = mon.sel.and_then(|s| self.clients.get(&s)).map_or(0, |c| c.tags);
         let mut x = 0;
         let mut ranges = Vec::new();
         for (i, name) in self.cfg.tags.iter().enumerate() {
@@ -1684,8 +1684,7 @@ impl WindowManager {
 
         let w = ww - tw - x;
         if w > bh {
-            if let Some(s) = mon.sel {
-                let c = &self.clients[&s];
+            if let Some(c) = mon.sel.and_then(|s| self.clients.get(&s)) {
                 let sch = if m == self.selmon { self.sel } else { self.norm };
                 self.drw.set_scheme(&sch);
                 self.drw.text(x, 0, w as u32, bh as u32, (lrpad / 2) as u32, &c.name, false);
@@ -1842,7 +1841,7 @@ impl WindowManager {
             }
             let c = self.clients.contains_key(&e.window).then_some(e.window);
             let m = match c {
-                Some(w) => self.clients[&w].mon,
+                Some(w) => self.clients.get(&w).map_or(self.selmon, |c| c.mon),
                 None => match self.wintomon(e.window) {
                     Some(m) => m,
                     None => return,
@@ -1896,12 +1895,13 @@ impl WindowManager {
             if e.message_type == self.na(Net::WMState) {
                 let fs = self.na(Net::WMFullscreen);
                 if e.data.get_long(1) as Atom == fs || e.data.get_long(2) as Atom == fs {
-                    let isfs = self.clients[&w].isfullscreen;
+                    let isfs = self.clients.get(&w).is_some_and(|c| c.isfullscreen);
                     let action = e.data.get_long(0);
                     // 1 = _NET_WM_STATE_ADD, 2 = _NET_WM_STATE_TOGGLE
                     self.setfullscreen(w, action == 1 || (action == 2 && !isfs));
                 }
-            } else if e.message_type == self.na(Net::ActiveWindow) && Some(w) != self.mons[self.selmon].sel && !self.clients[&w].isurgent {
+            } else if e.message_type == self.na(Net::ActiveWindow) && Some(w) != self.mons[self.selmon].sel && !self.clients.get(&w).is_some_and(|c| c.isurgent)
+            {
                 self.seturgent(w, true);
             }
         }
@@ -1924,11 +1924,15 @@ impl WindowManager {
             match e.atom {
                 xlib::XA_WM_TRANSIENT_FOR => {
                     let mut trans: Window = 0;
-                    if !self.clients[&w].isfloating && xlib::XGetTransientForHint(self.dpy, w, &mut trans) != 0 && self.clients.contains_key(&trans) {
+                    if !self.clients.get(&w).is_some_and(|c| c.isfloating)
+                        && xlib::XGetTransientForHint(self.dpy, w, &mut trans) != 0
+                        && self.clients.contains_key(&trans)
+                    {
                         let Some(c) = self.clients.get_mut(&w) else { return };
                         c.isfloating = true;
                         c.autofloat = true;
-                        self.arrange(Some(self.clients[&w].mon));
+                        let m = c.mon;
+                        self.arrange(Some(m));
                     }
                 }
                 xlib::XA_WM_NORMAL_HINTS => {
@@ -1944,7 +1948,7 @@ impl WindowManager {
             }
             if e.atom == xlib::XA_WM_NAME || e.atom == self.na(Net::WMName) {
                 self.updatetitle(w);
-                let m = self.clients[&w].mon;
+                let Some(m) = self.clients.get(&w).map(|c| c.mon) else { return };
                 if self.mons[m].sel == Some(w) {
                     self.drawbar(m);
                 }
@@ -2129,7 +2133,7 @@ impl WindowManager {
 
     unsafe fn configure(&self, w: Window) {
         unsafe {
-            let c = &self.clients[&w];
+            let Some(c) = self.clients.get(&w) else { return };
             let mut ev: xlib::XEvent = std::mem::zeroed();
             let ce = &mut ev.configure;
             ce.type_ = xlib::ConfigureNotify;
@@ -2163,7 +2167,7 @@ impl WindowManager {
                 self.drw.resize(self.sw as u32, self.bh as u32);
                 for m in 0..self.mons.len() {
                     for w in self.mons[m].clients.clone() {
-                        if self.clients[&w].isfullscreen {
+                        if self.clients.get(&w).is_some_and(|c| c.isfullscreen) {
                             let mm = &self.mons[m];
                             let (x, y, ww, hh) = (mm.mx, mm.my, mm.mw, mm.mh);
                             self.resizeclient(w, x, y, ww, hh);
@@ -2183,7 +2187,7 @@ impl WindowManager {
             let w = e.window;
             if self.clients.contains_key(&w) {
                 let vm = e.value_mask as c_uint;
-                let floating_mode = self.clients[&w].isfloating || !self.arranges(self.selmon);
+                let floating_mode = self.clients.get(&w).is_some_and(|c| c.isfloating) || !self.arranges(self.selmon);
                 if vm & xlib::CWBorderWidth as c_uint != 0 {
                     if let Some(c) = self.clients.get_mut(&w) {
                         c.bw = e.border_width;
@@ -2256,10 +2260,10 @@ impl WindowManager {
             if !ch.res_name.is_null() {
                 xlib::XFree(ch.res_name as *mut _);
             }
-            let name = self.clients[&w].name.clone();
+            let Some(name) = self.clients.get(&w).map(|c| c.name.clone()) else { return };
             let mut floating = false;
             let mut tags = 0;
-            let mut mon = self.clients[&w].mon;
+            let Some(mut mon) = self.clients.get(&w).map(|c| c.mon) else { return };
             for r in &self.cfg.rules {
                 let matches = r.title.as_ref().is_none_or(|t| name.contains(t.as_str()))
                     && r.class.as_ref().is_none_or(|t| class.contains(t.as_str()))
@@ -2301,8 +2305,7 @@ impl WindowManager {
             };
             let mut trans: Window = 0;
             let has_trans = xlib::XGetTransientForHint(self.dpy, w, &mut trans) != 0 && self.clients.contains_key(&trans);
-            if has_trans {
-                let t = &self.clients[&trans];
+            if let Some(t) = self.clients.get(&trans).filter(|_| has_trans) {
                 c.mon = t.mon;
                 c.tags = t.tags;
             }
@@ -2338,7 +2341,7 @@ impl WindowManager {
                 c.y = c.y.max(m.wy);
                 c.bw = bw;
             }
-            let c = &self.clients[&w];
+            let Some(c) = self.clients.get(&w) else { return };
             let mut wc: xlib::XWindowChanges = std::mem::zeroed();
             wc.border_width = c.bw;
             xlib::XConfigureWindow(self.dpy, w, xlib::CWBorderWidth as c_uint, &mut wc);
@@ -2369,7 +2372,7 @@ impl WindowManager {
                     xlib::XRaiseWindow(self.dpy, w);
                 }
             }
-            let mon = self.clients[&w].mon;
+            let Some(mon) = self.clients.get(&w).map(|c| c.mon) else { return };
             self.mons[mon].clients.insert(0, w);
             self.mons[mon].stack.insert(0, w);
             xlib::XChangeProperty(
@@ -2384,7 +2387,7 @@ impl WindowManager {
             );
             {
                 // some windows require this
-                let c = &self.clients[&w];
+                let Some(c) = self.clients.get(&w) else { return };
                 xlib::XMoveResizeWindow(self.dpy, w, c.x + 2 * self.sw, c.y, c.w as c_uint, c.h as c_uint);
             }
             self.setclientstate(w, NORMAL_STATE);
@@ -2428,12 +2431,12 @@ impl WindowManager {
     }
 
     fn detach(&mut self, w: Window) {
-        let m = self.clients[&w].mon;
+        let Some(m) = self.clients.get(&w).map(|c| c.mon) else { return };
         self.mons[m].clients.retain(|x| *x != w);
     }
 
     fn detachstack(&mut self, w: Window) {
-        let m = self.clients[&w].mon;
+        let Some(m) = self.clients.get(&w).map(|c| c.mon) else { return };
         self.mons[m].stack.retain(|x| *x != w);
         if self.mons[m].sel == Some(w) {
             let next = self.mons[m].stack.iter().copied().find(|x| self.is_visible(*x));
@@ -2442,12 +2445,12 @@ impl WindowManager {
     }
 
     fn attach(&mut self, w: Window) {
-        let m = self.clients[&w].mon;
+        let Some(m) = self.clients.get(&w).map(|c| c.mon) else { return };
         self.mons[m].clients.insert(0, w);
     }
 
     fn attachstack(&mut self, w: Window) {
-        let m = self.clients[&w].mon;
+        let Some(m) = self.clients.get(&w).map(|c| c.mon) else { return };
         self.mons[m].stack.insert(0, w);
     }
 
@@ -2468,11 +2471,11 @@ impl WindowManager {
                 self.unfocus(s, false);
             }
             if let Some(w) = c {
-                let cm = self.clients[&w].mon;
+                let Some(cm) = self.clients.get(&w).map(|c| c.mon) else { return };
                 if cm != self.selmon {
                     self.selmon = cm;
                 }
-                if self.clients[&w].isurgent {
+                if self.clients.get(&w).is_some_and(|c| c.isurgent) {
                     self.seturgent(w, false);
                 }
                 self.detachstack(w);
@@ -2506,7 +2509,7 @@ impl WindowManager {
 
     unsafe fn setfocus(&mut self, w: Window) {
         unsafe {
-            if !self.clients[&w].neverfocus {
+            if self.clients.get(&w).is_some_and(|c| !c.neverfocus) {
                 xlib::XSetInputFocus(self.dpy, w, xlib::RevertToPointerRoot, xlib::CurrentTime);
                 xlib::XChangeProperty(
                     self.dpy,
@@ -2542,7 +2545,7 @@ impl WindowManager {
         unsafe {
             let m = self.selmon;
             let Some(sel) = self.mons[m].sel else { return };
-            if self.clients[&sel].isfullscreen && self.cfg.lock_fullscreen {
+            if self.clients.get(&sel).is_some_and(|c| c.isfullscreen) && self.cfg.lock_fullscreen {
                 return;
             }
             let vis: Vec<Window> = self.mons[m].clients.iter().copied().filter(|w| self.is_visible(*w)).collect();
@@ -2562,12 +2565,13 @@ impl WindowManager {
         unsafe {
             let bh = self.bh;
             let (sw, sh) = (self.sw, self.sh);
-            let arranges = self.arranges(self.clients[&w].mon);
+            let Some(m) = self.clients.get(&w).map(|c| c.mon) else { return false };
+            let arranges = self.arranges(m);
             let resize_hints = self.cfg.resize_hints;
-            if !self.clients[&w].hintsvalid {
+            if !self.clients.get(&w).is_some_and(|c| c.hintsvalid) {
                 self.updatesizehints(w);
             }
-            let c = &self.clients[&w];
+            let Some(c) = self.clients.get(&w) else { return false };
             let m = &self.mons[c.mon];
             // set minimum possible
             *ww = (*ww).max(1);
@@ -2671,7 +2675,7 @@ impl WindowManager {
 
     unsafe fn setfullscreen(&mut self, w: Window, fullscreen: bool) {
         unsafe {
-            let isfs = self.clients[&w].isfullscreen;
+            let Some(isfs) = self.clients.get(&w).map(|c| c.isfullscreen) else { return };
             if fullscreen && !isfs {
                 let fs = self.na(Net::WMFullscreen);
                 xlib::XChangeProperty(self.dpy, w, self.na(Net::WMState), xlib::XA_ATOM, 32, xlib::PropModeReplace, &fs as *const Atom as *const c_uchar, 1);
@@ -2752,7 +2756,7 @@ impl WindowManager {
             // show clients top down
             for &w in &stack {
                 if self.is_visible(w) {
-                    let c = &self.clients[&w];
+                    let Some(c) = self.clients.get(&w) else { continue };
                     xlib::XMoveWindow(self.dpy, w, c.x, c.y);
                     if (!arranges || c.isfloating) && !c.isfullscreen {
                         let (x, y, ww, hh) = (c.x, c.y, c.w, c.h);
@@ -2763,7 +2767,7 @@ impl WindowManager {
             // hide clients bottom up
             for &w in stack.iter().rev() {
                 if !self.is_visible(w) {
-                    let c = &self.clients[&w];
+                    let Some(c) = self.clients.get(&w) else { continue };
                     xlib::XMoveWindow(self.dpy, w, c.width() * -2, c.y);
                 }
             }
@@ -2774,7 +2778,7 @@ impl WindowManager {
         unsafe {
             self.drawbar(m);
             let Some(sel) = self.mons[m].sel else { return };
-            if self.clients[&sel].isfloating || !self.arranges(m) {
+            if self.clients.get(&sel).is_some_and(|c| c.isfloating) || !self.arranges(m) {
                 xlib::XRaiseWindow(self.dpy, sel);
             }
             if self.arranges(m) {
@@ -2782,7 +2786,7 @@ impl WindowManager {
                 wc.stack_mode = xlib::Below;
                 wc.sibling = self.mons[m].barwin;
                 for w in self.mons[m].stack.clone() {
-                    if !self.clients[&w].isfloating && self.is_visible(w) {
+                    if !self.clients.get(&w).is_some_and(|c| c.isfloating) && self.is_visible(w) {
                         xlib::XConfigureWindow(self.dpy, w, (xlib::CWSibling | xlib::CWStackMode) as c_uint, &mut wc);
                         wc.sibling = w;
                     }
@@ -2810,7 +2814,7 @@ impl WindowManager {
 
     unsafe fn place(&mut self, w: Window, x: i32, y: i32, ww: i32, hh: i32) {
         unsafe {
-            let bw = self.clients[&w].bw;
+            let Some(bw) = self.clients.get(&w).map(|c| c.bw) else { return };
             self.resize(w, x, y, ww - 2 * bw, hh - 2 * bw, false);
         }
     }
@@ -2842,12 +2846,12 @@ impl WindowManager {
                 if i < nm {
                     let hh = mh / mfacts + if (i as i32) < mrest { 1 } else { 0 };
                     self.place(w, mx, my, mw, hh);
-                    my += self.clients[&w].height() + ih;
+                    my += self.clients.get(&w).map_or(0, |c| c.height()) + ih;
                 } else {
                     let j = (i - nm) as i32;
                     let hh = sh / sfacts + if j < srest { 1 } else { 0 };
                     self.place(w, sx, sy, sw, hh);
-                    sy += self.clients[&w].height() + ih;
+                    sy += self.clients.get(&w).map_or(0, |c| c.height()) + ih;
                 }
             }
         }
@@ -2881,12 +2885,12 @@ impl WindowManager {
                 if i < nm {
                     let ww = mw / mfacts + if (i as i32) < mrest { 1 } else { 0 };
                     self.place(w, mx, my, ww, mh);
-                    mx += self.clients[&w].width() + iv;
+                    mx += self.clients.get(&w).map_or(0, |c| c.width()) + iv;
                 } else {
                     let j = (i - nm) as i32;
                     let ww = sw / sfacts + if j < srest { 1 } else { 0 };
                     self.place(w, sx, sy, ww, sh);
-                    sx += self.clients[&w].width() + iv;
+                    sx += self.clients.get(&w).map_or(0, |c| c.width()) + iv;
                 }
             }
         }
@@ -2923,7 +2927,7 @@ impl WindowManager {
                 if i < nm {
                     let hh = mh / mfacts + if (i as i32) < mrest { 1 } else { 0 };
                     self.place(w, mx, my, mw, hh);
-                    my += self.clients[&w].height() + ih;
+                    my += self.clients.get(&w).map_or(0, |c| c.height()) + ih;
                 } else {
                     self.place(w, sx, sy, sw, sh);
                 }
@@ -2972,7 +2976,7 @@ impl WindowManager {
                         // windows whose position on screen is known
                         let placed: Vec<Window> = leaves.iter().copied().filter(|l| !added.contains(l)).collect();
                         let rect = |l: Window| {
-                            let c = &self.clients[&l];
+                            let Some(c) = self.clients.get(&l) else { return (0, 0, 0, 0) };
                             (c.x, c.y, c.width(), c.height())
                         };
                         let under = pointer.and_then(|(px, py)| {
@@ -3108,7 +3112,7 @@ impl WindowManager {
         unsafe {
             let mask = self.tagmask();
             if let Some(s) = self.mons[self.selmon].sel {
-                let new = self.clients[&s].tags ^ (t & mask);
+                let Some(new) = self.clients.get(&s).map(|c| c.tags ^ (t & mask)) else { return };
                 if new != 0 {
                     if let Some(c) = self.clients.get_mut(&s) {
                         c.tags = new;
@@ -3123,7 +3127,7 @@ impl WindowManager {
 
     unsafe fn sendmon(&mut self, w: Window, m: usize) {
         unsafe {
-            if self.clients[&w].mon == m {
+            if self.clients.get(&w).is_none_or(|c| c.mon == m) {
                 return;
             }
             self.unfocus(w, true);
@@ -3211,7 +3215,7 @@ impl WindowManager {
         unsafe {
             let m = self.selmon;
             let Some(sel) = self.mons[m].sel else { return };
-            if !self.arranges(m) || self.clients[&sel].isfloating {
+            if !self.arranges(m) || self.clients.get(&sel).is_none_or(|c| c.isfloating) {
                 return;
             }
             // dwindle/spiral: swap with the first window in the tree
@@ -3342,7 +3346,7 @@ impl WindowManager {
 
     unsafe fn after_mouse(&mut self, w: Window) {
         unsafe {
-            let c = &self.clients[&w];
+            let Some(c) = self.clients.get(&w) else { return };
             let m = self.recttomon(c.x, c.y, c.w, c.h);
             if m != self.selmon {
                 self.sendmon(w, m);
@@ -3355,13 +3359,13 @@ impl WindowManager {
     unsafe fn movemouse(&mut self) {
         unsafe {
             let Some(sel) = self.mons[self.selmon].sel else { return };
-            if self.clients[&sel].isfullscreen {
+            if self.clients.get(&sel).is_none_or(|c| c.isfullscreen) {
                 return; // no support moving fullscreen windows by mouse
             }
             self.restack(self.selmon);
-            let (ocx, ocy) = (self.clients[&sel].x, self.clients[&sel].y);
+            let Some((ocx, ocy)) = self.clients.get(&sel).map(|c| (c.x, c.y)) else { return };
             let Some((px, py)) = self.getrootptr() else { return };
-            if self.cfg.drag_swap && !self.clients[&sel].isfloating && self.arranges(self.selmon) {
+            if self.cfg.drag_swap && !self.clients.get(&sel).is_some_and(|c| c.isfloating) && self.arranges(self.selmon) {
                 // drag_tiled = "swap": the window follows the mouse and is dropped
                 // into the tiling where you let go
                 xlib::XRaiseWindow(self.dpy, sel);
@@ -3376,7 +3380,7 @@ impl WindowManager {
                 let mut ny = ocy + (e.y_root - py);
                 let snap = wm.cfg.snap as i32;
                 let m = &wm.mons[wm.selmon];
-                let c = &wm.clients[&sel];
+                let Some(c) = wm.clients.get(&sel) else { return };
                 if (m.wx - nx).abs() < snap {
                     nx = m.wx;
                 } else if ((m.wx + m.ww) - (nx + c.width())).abs() < snap {
@@ -3391,7 +3395,7 @@ impl WindowManager {
                 if !floating && wm.arranges(wm.selmon) && ((nx - cx).abs() > snap || (ny - cy).abs() > snap) {
                     wm.togglefloating();
                 }
-                if !wm.arranges(wm.selmon) || wm.clients[&sel].isfloating {
+                if !wm.arranges(wm.selmon) || wm.clients.get(&sel).is_some_and(|c| c.isfloating) {
                     wm.resize(sel, nx, ny, cw, ch, true);
                 }
             });
@@ -3404,16 +3408,15 @@ impl WindowManager {
     unsafe fn drop_tiled(&mut self, sel: Window) {
         unsafe {
             // put the window back where the tiling thinks it is, so arrange moves it
-            let (cx, cy) = (self.clients[&sel].x, self.clients[&sel].y);
+            let Some((cx, cy, from)) = self.clients.get(&sel).map(|c| (c.x, c.y, c.mon)) else { return };
             xlib::XMoveWindow(self.dpy, sel, cx, cy);
-            let from = self.clients[&sel].mon;
             let Some((x, y)) = self.getrootptr() else {
                 self.arrange(Some(from));
                 return;
             };
             let to = self.recttomon(x, y, 1, 1);
             let target = self.tiled(to).into_iter().find(|&w| {
-                let c = &self.clients[&w];
+                let Some(c) = self.clients.get(&w) else { return false };
                 w != sel && x >= c.x && x < c.x + c.width() && y >= c.y && y < c.y + c.height()
             });
             if to != from {
@@ -3447,17 +3450,17 @@ impl WindowManager {
     unsafe fn resizemouse(&mut self) {
         unsafe {
             let Some(sel) = self.mons[self.selmon].sel else { return };
-            if self.clients[&sel].isfullscreen {
+            if self.clients.get(&sel).is_none_or(|c| c.isfullscreen) {
                 return; // no support resizing fullscreen windows by mouse
             }
             self.restack(self.selmon);
-            let (ocx, ocy) = (self.clients[&sel].x, self.clients[&sel].y);
+            let Some((ocx, ocy)) = self.clients.get(&sel).map(|c| (c.x, c.y)) else { return };
             {
-                let c = &self.clients[&sel];
+                let Some(c) = self.clients.get(&sel) else { return };
                 xlib::XWarpPointer(self.dpy, 0, sel, 0, 0, 0, 0, c.w + c.bw - 1, c.h + c.bw - 1);
             }
             self.mouse_loop(1, |wm, e| {
-                let c = &wm.clients[&sel];
+                let Some(c) = wm.clients.get(&sel) else { return };
                 let nw = (e.x_root - ocx - 2 * c.bw + 1).max(1);
                 let nh = (e.y_root - ocy - 2 * c.bw + 1).max(1);
                 let snap = wm.cfg.snap as i32;
@@ -3468,12 +3471,12 @@ impl WindowManager {
                 if inside && !floating && wm.arranges(wm.selmon) && ((nw - cw).abs() > snap || (nh - ch).abs() > snap) {
                     wm.togglefloating();
                 }
-                if !wm.arranges(wm.selmon) || wm.clients[&sel].isfloating {
+                if !wm.arranges(wm.selmon) || wm.clients.get(&sel).is_some_and(|c| c.isfloating) {
                     wm.resize(sel, cx, cy, nw, nh, true);
                 }
             });
             {
-                let c = &self.clients[&sel];
+                let Some(c) = self.clients.get(&sel) else { return };
                 xlib::XWarpPointer(self.dpy, 0, sel, 0, 0, 0, 0, c.w + c.bw - 1, c.h + c.bw - 1);
             }
             let mut ev: xlib::XEvent = std::mem::zeroed();
