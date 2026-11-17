@@ -15,11 +15,11 @@ use x11::xlib::{self, Atom, Window};
 use x11::{xcursor, xinerama, xrandr, xss};
 
 use crate::bsp;
-use crate::keyboard;
-use crate::{appearance, input, outputs, screen};
 use crate::config::{self, Click, Cmd, Config, Gaps, LayoutKind, LayoutSel, Spawn};
 use crate::drw::{Drw, Scheme};
+use crate::keyboard;
 use crate::status::Status;
+use crate::{appearance, input, outputs, screen};
 
 // ---------------------------------------------------------------------------
 // atoms
@@ -439,10 +439,8 @@ impl WindowManager {
                 }
                 let timeout = self.next_tick.saturating_duration_since(Instant::now()).as_millis().min(1000) as c_int;
                 xlib::XFlush(self.dpy);
-                let mut pfd = [
-                    libc::pollfd { fd, events: libc::POLLIN, revents: 0 },
-                    libc::pollfd { fd: self.status.wake_fd(), events: libc::POLLIN, revents: 0 },
-                ];
+                let mut pfd =
+                    [libc::pollfd { fd, events: libc::POLLIN, revents: 0 }, libc::pollfd { fd: self.status.wake_fd(), events: libc::POLLIN, revents: 0 }];
                 libc::poll(pfd.as_mut_ptr(), 2, timeout.max(1));
                 // a background run_command finished: show it right away
                 if pfd[1].revents & libc::POLLIN != 0 && self.status.drain() {
@@ -464,16 +462,20 @@ impl WindowManager {
             input::apply(self.dpy, &self.cfg.input);
             // a new keyboard gets the default repeat rate and num lock state
             if self.cfg.keyboard.repeat_rate.is_some() || self.cfg.keyboard.repeat_delay.is_some() || self.cfg.keyboard.numlock.is_some() {
-                let _ = keyboard::apply(self.dpy, &crate::keyboard::KeyboardCfg { layout: None, variant: None, model: None, options: None, ..self.cfg.keyboard.clone() });
+                let _ = keyboard::apply(
+                    self.dpy,
+                    &crate::keyboard::KeyboardCfg { layout: None, variant: None, model: None, options: None, ..self.cfg.keyboard.clone() },
+                );
             }
         }
         if std::mem::take(&mut self.monitors_pending) {
             self.apply_monitors();
         }
         if let Some(c) = &mut self.lock_child
-            && !matches!(c.try_wait(), Ok(None)) {
-                self.lock_child = None;
-            }
+            && !matches!(c.try_wait(), Ok(None))
+        {
+            self.lock_child = None;
+        }
 
         // hot reload
         if let Some(p) = &self.cfg_path {
@@ -509,9 +511,10 @@ impl WindowManager {
         }
 
         if let Some(t) = self.wallpaper_next
-            && Instant::now() >= t {
-                self.apply_wallpaper(false);
-            }
+            && Instant::now() >= t
+        {
+            self.apply_wallpaper(false);
+        }
 
         if let Some((_, until)) = &self.error
             && Instant::now() >= *until
@@ -741,16 +744,18 @@ impl WindowManager {
             xlib::EnterNotify => self.enternotify(&ev.crossing),
             xlib::Expose => {
                 if ev.expose.count == 0
-                    && let Some(m) = self.wintomon(ev.expose.window) {
-                        self.drawbar(m);
-                    }
+                    && let Some(m) = self.wintomon(ev.expose.window)
+                {
+                    self.drawbar(m);
+                }
             }
             xlib::FocusIn => {
                 // there are some broken focus acquiring clients needing extra handling
                 if let Some(s) = self.mons[self.selmon].sel
-                    && ev.focus_change.window != s {
-                        self.setfocus(s);
-                    }
+                    && ev.focus_change.window != s
+                {
+                    self.setfocus(s);
+                }
             }
             xlib::KeyPress => self.keypress(&mut ev.key),
             xlib::MappingNotify => {
@@ -882,10 +887,11 @@ impl WindowManager {
             }
             Cmd::TagMon(d) => {
                 if let Some(s) = self.mons[self.selmon].sel
-                    && self.mons.len() > 1 {
-                        let m = self.dirtomon(d);
-                        self.sendmon(s, m);
-                    }
+                    && self.mons.len() > 1
+                {
+                    let m = self.dirtomon(d);
+                    self.sendmon(s, m);
+                }
             }
             Cmd::MoveMouse => self.movemouse(),
             Cmd::ResizeMouse => self.resizemouse(),
@@ -1058,8 +1064,20 @@ impl WindowManager {
         let (mut n, mut extra) = (0, 0);
         let mut p: *mut c_uchar = ptr::null_mut();
         let mut res = String::new();
-        if xlib::XGetWindowProperty(self.dpy, self.root, xlib::XA_RESOURCE_MANAGER, 0, 1 << 22, xlib::False, xlib::XA_STRING, &mut real, &mut format, &mut n, &mut extra, &mut p)
-            == xlib::Success as c_int
+        if xlib::XGetWindowProperty(
+            self.dpy,
+            self.root,
+            xlib::XA_RESOURCE_MANAGER,
+            0,
+            1 << 22,
+            xlib::False,
+            xlib::XA_STRING,
+            &mut real,
+            &mut format,
+            &mut n,
+            &mut extra,
+            &mut p,
+        ) == xlib::Success as c_int
             && !p.is_null()
         {
             res = String::from_utf8_lossy(std::slice::from_raw_parts(p, n as usize)).into_owned();
@@ -1105,8 +1123,20 @@ impl WindowManager {
         let (mut n, mut extra) = (0, 0);
         let mut p: *mut c_uchar = ptr::null_mut();
         let mut res = String::new();
-        if xlib::XGetWindowProperty(self.dpy, self.root, xlib::XA_RESOURCE_MANAGER, 0, 1 << 22, xlib::False, xlib::XA_STRING, &mut real, &mut format, &mut n, &mut extra, &mut p)
-            == xlib::Success as c_int
+        if xlib::XGetWindowProperty(
+            self.dpy,
+            self.root,
+            xlib::XA_RESOURCE_MANAGER,
+            0,
+            1 << 22,
+            xlib::False,
+            xlib::XA_STRING,
+            &mut real,
+            &mut format,
+            &mut n,
+            &mut extra,
+            &mut p,
+        ) == xlib::Success as c_int
             && !p.is_null()
         {
             res = String::from_utf8_lossy(std::slice::from_raw_parts(p, n as usize)).into_owned();
@@ -1238,8 +1268,20 @@ impl WindowManager {
         let (mut n, mut extra) = (0, 0);
         let mut p: *mut c_uchar = ptr::null_mut();
         let mut atom = 0;
-        if xlib::XGetWindowProperty(self.dpy, w, prop, 0, std::mem::size_of::<Atom>() as c_long, xlib::False, xlib::XA_ATOM, &mut real, &mut format, &mut n, &mut extra, &mut p)
-            == xlib::Success as c_int
+        if xlib::XGetWindowProperty(
+            self.dpy,
+            w,
+            prop,
+            0,
+            std::mem::size_of::<Atom>() as c_long,
+            xlib::False,
+            xlib::XA_ATOM,
+            &mut real,
+            &mut format,
+            &mut n,
+            &mut extra,
+            &mut p,
+        ) == xlib::Success as c_int
             && !p.is_null()
         {
             if n > 0 {
@@ -1309,7 +1351,8 @@ impl WindowManager {
         let mut format = 0;
         let (mut n, mut extra) = (0, 0);
         let mut p: *mut c_uchar = ptr::null_mut();
-        if xlib::XGetWindowProperty(self.dpy, w, self.tags_atom, 0, 2, xlib::False, xlib::XA_CARDINAL, &mut real, &mut format, &mut n, &mut extra, &mut p) != xlib::Success as c_int
+        if xlib::XGetWindowProperty(self.dpy, w, self.tags_atom, 0, 2, xlib::False, xlib::XA_CARDINAL, &mut real, &mut format, &mut n, &mut extra, &mut p)
+            != xlib::Success as c_int
             || p.is_null()
         {
             return None;
@@ -1324,7 +1367,16 @@ impl WindowManager {
 
     unsafe fn update_desktop_props(&self) {
         let n: c_long = self.cfg.tags.len() as c_long;
-        xlib::XChangeProperty(self.dpy, self.root, self.na(Net::NumberOfDesktops), xlib::XA_CARDINAL, 32, xlib::PropModeReplace, &n as *const _ as *const c_uchar, 1);
+        xlib::XChangeProperty(
+            self.dpy,
+            self.root,
+            self.na(Net::NumberOfDesktops),
+            xlib::XA_CARDINAL,
+            32,
+            xlib::PropModeReplace,
+            &n as *const _ as *const c_uchar,
+            1,
+        );
         let mut names = Vec::new();
         for t in &self.cfg.tags {
             names.extend_from_slice(t.as_bytes());
@@ -1333,7 +1385,16 @@ impl WindowManager {
         xlib::XChangeProperty(self.dpy, self.root, self.na(Net::DesktopNames), self.utf8, 8, xlib::PropModeReplace, names.as_ptr(), names.len() as c_int);
         if let Some(m) = self.mons.get(self.selmon) {
             let cur: c_long = m.tagset[m.seltags].trailing_zeros() as c_long;
-            xlib::XChangeProperty(self.dpy, self.root, self.na(Net::CurrentDesktop), xlib::XA_CARDINAL, 32, xlib::PropModeReplace, &cur as *const _ as *const c_uchar, 1);
+            xlib::XChangeProperty(
+                self.dpy,
+                self.root,
+                self.na(Net::CurrentDesktop),
+                xlib::XA_CARDINAL,
+                32,
+                xlib::PropModeReplace,
+                &cur as *const _ as *const c_uchar,
+                1,
+            );
         }
     }
 
@@ -1630,7 +1691,18 @@ impl WindowManager {
         let mods = [0, xlib::LockMask, self.numlockmask, self.numlockmask | xlib::LockMask];
         xlib::XUngrabButton(self.dpy, xlib::AnyButton as c_uint, xlib::AnyModifier, w);
         if !focused {
-            xlib::XGrabButton(self.dpy, xlib::AnyButton as c_uint, xlib::AnyModifier, w, xlib::False, BUTTON_MASK as c_uint, xlib::GrabModeSync, xlib::GrabModeSync, 0, 0);
+            xlib::XGrabButton(
+                self.dpy,
+                xlib::AnyButton as c_uint,
+                xlib::AnyModifier,
+                w,
+                xlib::False,
+                BUTTON_MASK as c_uint,
+                xlib::GrabModeSync,
+                xlib::GrabModeSync,
+                0,
+                0,
+            );
         }
         for b in &self.cfg.buttons {
             if b.click == Click::ClientWin {
@@ -1661,13 +1733,14 @@ impl WindowManager {
         let mut arg = None;
         // focus monitor if necessary
         if let Some(m) = self.wintomon(e.window)
-            && m != self.selmon {
-                if let Some(s) = self.mons[self.selmon].sel {
-                    self.unfocus(s, true);
-                }
-                self.selmon = m;
-                self.focus(None);
+            && m != self.selmon
+        {
+            if let Some(s) = self.mons[self.selmon].sel {
+                self.unfocus(s, true);
             }
+            self.selmon = m;
+            self.focus(None);
+        }
         let sm = self.selmon;
         if e.window == self.mons[sm].barwin {
             let mon = &self.mons[sm];
@@ -1688,13 +1761,8 @@ impl WindowManager {
             click = Click::ClientWin;
         }
         let state = self.cleanmask(e.state);
-        let funcs: Vec<mlua::Function> = self
-            .cfg
-            .buttons
-            .iter()
-            .filter(|b| b.click == click && b.button == e.button && self.cleanmask(b.mods) == state)
-            .map(|b| b.func.clone())
-            .collect();
+        let funcs: Vec<mlua::Function> =
+            self.cfg.buttons.iter().filter(|b| b.click == click && b.button == e.button && self.cleanmask(b.mods) == state).map(|b| b.func.clone()).collect();
         for f in funcs {
             self.run_lua(f, arg);
         }
@@ -1733,13 +1801,14 @@ impl WindowManager {
         }
         let m = self.recttomon(e.x_root, e.y_root, 1, 1);
         if let Some(prev) = self.motion_mon
-            && m != prev {
-                if let Some(s) = self.mons[self.selmon].sel {
-                    self.unfocus(s, true);
-                }
-                self.selmon = m;
-                self.focus(None);
+            && m != prev
+        {
+            if let Some(s) = self.mons[self.selmon].sel {
+                self.unfocus(s, true);
             }
+            self.selmon = m;
+            self.focus(None);
+        }
         self.motion_mon = Some(m);
     }
 
@@ -1760,10 +1829,9 @@ impl WindowManager {
                 // 1 = _NET_WM_STATE_ADD, 2 = _NET_WM_STATE_TOGGLE
                 self.setfullscreen(w, action == 1 || (action == 2 && !isfs));
             }
-        } else if e.message_type == self.na(Net::ActiveWindow)
-            && Some(w) != self.mons[self.selmon].sel && !self.clients[&w].isurgent {
-                self.seturgent(w, true);
-            }
+        } else if e.message_type == self.na(Net::ActiveWindow) && Some(w) != self.mons[self.selmon].sel && !self.clients[&w].isurgent {
+            self.seturgent(w, true);
+        }
     }
 
     unsafe fn propertynotify(&mut self, e: &xlib::XPropertyEvent) {
@@ -1814,8 +1882,20 @@ impl WindowManager {
         let mut format = 0;
         let (mut n, mut extra) = (0, 0);
         let mut p: *mut c_uchar = ptr::null_mut();
-        if xlib::XGetWindowProperty(self.dpy, self.root, self.cmd_atom, 0, 1 << 20, xlib::True, xlib::AnyPropertyType as Atom, &mut real, &mut format, &mut n, &mut extra, &mut p)
-            != xlib::Success as c_int
+        if xlib::XGetWindowProperty(
+            self.dpy,
+            self.root,
+            self.cmd_atom,
+            0,
+            1 << 20,
+            xlib::True,
+            xlib::AnyPropertyType as Atom,
+            &mut real,
+            &mut format,
+            &mut n,
+            &mut extra,
+            &mut p,
+        ) != xlib::Success as c_int
             || p.is_null()
         {
             return;
@@ -1936,7 +2016,16 @@ impl WindowManager {
         xlib::XDeleteProperty(self.dpy, self.root, self.na(Net::ClientList));
         for m in &self.mons {
             for w in &m.clients {
-                xlib::XChangeProperty(self.dpy, self.root, self.na(Net::ClientList), xlib::XA_WINDOW, 32, xlib::PropModeAppend, w as *const Window as *const c_uchar, 1);
+                xlib::XChangeProperty(
+                    self.dpy,
+                    self.root,
+                    self.na(Net::ClientList),
+                    xlib::XA_WINDOW,
+                    32,
+                    xlib::PropModeAppend,
+                    w as *const Window as *const c_uchar,
+                    1,
+                );
             }
         }
     }
@@ -2036,15 +2125,8 @@ impl WindowManager {
                 self.configure(w);
             }
         } else {
-            let mut wc = xlib::XWindowChanges {
-                x: e.x,
-                y: e.y,
-                width: e.width,
-                height: e.height,
-                border_width: e.border_width,
-                sibling: e.above,
-                stack_mode: e.detail,
-            };
+            let mut wc =
+                xlib::XWindowChanges { x: e.x, y: e.y, width: e.width, height: e.height, border_width: e.border_width, sibling: e.above, stack_mode: e.detail };
             xlib::XConfigureWindow(self.dpy, w, e.value_mask as c_uint, &mut wc);
         }
         xlib::XSync(self.dpy, xlib::False);
@@ -2077,9 +2159,10 @@ impl WindowManager {
                 floating |= r.floating;
                 tags |= r.tags;
                 if r.monitor >= 0
-                    && let Some(i) = self.mons.iter().position(|m| m.num == r.monitor) {
-                        mon = i;
-                    }
+                    && let Some(i) = self.mons.iter().position(|m| m.num == r.monitor)
+                {
+                    mon = i;
+                }
             }
         }
         let mask = self.tagmask();
@@ -2178,7 +2261,16 @@ impl WindowManager {
         let mon = self.clients[&w].mon;
         self.mons[mon].clients.insert(0, w);
         self.mons[mon].stack.insert(0, w);
-        xlib::XChangeProperty(self.dpy, self.root, self.na(Net::ClientList), xlib::XA_WINDOW, 32, xlib::PropModeAppend, &w as *const Window as *const c_uchar, 1);
+        xlib::XChangeProperty(
+            self.dpy,
+            self.root,
+            self.na(Net::ClientList),
+            xlib::XA_WINDOW,
+            32,
+            xlib::PropModeAppend,
+            &w as *const Window as *const c_uchar,
+            1,
+        );
         {
             // some windows require this
             let c = &self.clients[&w];
@@ -2187,9 +2279,10 @@ impl WindowManager {
         self.setclientstate(w, NORMAL_STATE);
         self.save_client_tags(w);
         if mon == self.selmon
-            && let Some(s) = self.mons[self.selmon].sel {
-                self.unfocus(s, false);
-            }
+            && let Some(s) = self.mons[self.selmon].sel
+        {
+            self.unfocus(s, false);
+        }
         self.mons[mon].sel = Some(w);
         self.arrange(Some(mon));
         xlib::XMapWindow(self.dpy, w);
@@ -2255,9 +2348,10 @@ impl WindowManager {
             _ => self.mons[sm].stack.iter().copied().find(|w| self.is_visible(*w)),
         };
         if let Some(s) = self.mons[self.selmon].sel
-            && Some(s) != c {
-                self.unfocus(s, false);
-            }
+            && Some(s) != c
+        {
+            self.unfocus(s, false);
+        }
         if let Some(w) = c {
             let cm = self.clients[&w].mon;
             if cm != self.selmon {
@@ -2295,7 +2389,16 @@ impl WindowManager {
     unsafe fn setfocus(&mut self, w: Window) {
         if !self.clients[&w].neverfocus {
             xlib::XSetInputFocus(self.dpy, w, xlib::RevertToPointerRoot, xlib::CurrentTime);
-            xlib::XChangeProperty(self.dpy, self.root, self.na(Net::ActiveWindow), xlib::XA_WINDOW, 32, xlib::PropModeReplace, &w as *const Window as *const c_uchar, 1);
+            xlib::XChangeProperty(
+                self.dpy,
+                self.root,
+                self.na(Net::ActiveWindow),
+                xlib::XA_WINDOW,
+                32,
+                xlib::PropModeReplace,
+                &w as *const Window as *const c_uchar,
+                1,
+            );
         }
         self.sendevent(w, self.wa(Wm::TakeFocus));
     }
@@ -2727,9 +2830,8 @@ impl WindowManager {
                             px >= x && px < x + ww && py >= y && py < y + hh
                         })
                     });
-                    let target = under
-                        .or_else(|| self.mons[m].stack.iter().copied().find(|s| *s != w && placed.contains(s)))
-                        .unwrap_or(*leaves.last().unwrap());
+                    let target =
+                        under.or_else(|| self.mons[m].stack.iter().copied().find(|s| *s != w && placed.contains(s))).unwrap_or(*leaves.last().unwrap());
                     let first = if spiral {
                         bsp::spiral_first(t.depth(target).unwrap_or(0))
                     } else {
@@ -2798,14 +2900,16 @@ impl WindowManager {
         let mask = self.tagmask();
         let mon = &mut self.mons[m];
         if let Some(t) = t
-            && t & mask == mon.tagset[mon.seltags] {
-                return;
-            }
+            && t & mask == mon.tagset[mon.seltags]
+        {
+            return;
+        }
         mon.seltags ^= 1; // toggle sel tagset
         if let Some(t) = t
-            && t & mask != 0 {
-                mon.tagset[mon.seltags] = t & mask;
-            }
+            && t & mask != 0
+        {
+            mon.tagset[mon.seltags] = t & mask;
+        }
         self.update_desktop_props();
         self.focus(None);
         self.arrange(Some(m));
@@ -2827,12 +2931,13 @@ impl WindowManager {
     unsafe fn tag(&mut self, t: u32) {
         let mask = self.tagmask();
         if let Some(s) = self.mons[self.selmon].sel
-            && t & mask != 0 {
-                self.clients.get_mut(&s).unwrap().tags = t & mask;
-                self.save_client_tags(s);
-                self.focus(None);
-                self.arrange(Some(self.selmon));
-            }
+            && t & mask != 0
+        {
+            self.clients.get_mut(&s).unwrap().tags = t & mask;
+            self.save_client_tags(s);
+            self.focus(None);
+            self.arrange(Some(self.selmon));
+        }
     }
 
     unsafe fn toggletag(&mut self, t: u32) {
@@ -2890,9 +2995,10 @@ impl WindowManager {
             mon.sellt ^= 1;
         }
         if let Some(i) = idx
-            && i < self.cfg.layouts.len() {
-                mon.lt[mon.sellt] = i;
-            }
+            && i < self.cfg.layouts.len()
+        {
+            mon.lt[mon.sellt] = i;
+        }
         mon.ltsymbol = self.cfg.layouts[mon.lt[mon.sellt]].symbol.clone();
         if mon.sel.is_some() {
             self.arrange(Some(m));
@@ -3015,8 +3121,17 @@ impl WindowManager {
     // -----------------------------------------------------------------------
 
     unsafe fn mouse_loop(&mut self, cursor: usize, mut on_motion: impl FnMut(&mut Self, &xlib::XMotionEvent)) {
-        if xlib::XGrabPointer(self.dpy, self.root, xlib::False, MOUSE_MASK as c_uint, xlib::GrabModeAsync, xlib::GrabModeAsync, 0, self.cursors[cursor], xlib::CurrentTime)
-            != xlib::GrabSuccess
+        if xlib::XGrabPointer(
+            self.dpy,
+            self.root,
+            xlib::False,
+            MOUSE_MASK as c_uint,
+            xlib::GrabModeAsync,
+            xlib::GrabModeAsync,
+            0,
+            self.cursors[cursor],
+            xlib::CurrentTime,
+        ) != xlib::GrabSuccess
         {
             return;
         }

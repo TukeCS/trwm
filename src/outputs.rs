@@ -147,12 +147,7 @@ pub fn plan(outputs: &[Output], cfg: &[MonitorCfg]) -> Result<Arrangement, Strin
     // entries for outputs that don't exist (a GPU mode with other output names,
     // a dock that isn't attached, ...) are skipped; the rest use the real names,
     // also in right_of = ... and friends
-    let real = |n: &String| -> String {
-        cfg.iter()
-            .find(|c| c.names.contains(n))
-            .and_then(|c| resolve(outputs, c))
-            .map_or_else(|| n.clone(), str::to_string)
-    };
+    let real = |n: &String| -> String { cfg.iter().find(|c| c.names.contains(n)).and_then(|c| resolve(outputs, c)).map_or_else(|| n.clone(), str::to_string) };
     let cfg: Vec<(String, MonitorCfg)> = cfg
         .iter()
         .filter_map(|c| {
@@ -234,11 +229,7 @@ pub fn plan(outputs: &[Output], cfg: &[MonitorCfg]) -> Result<Arrangement, Strin
             continue;
         }
         let o = &outputs[w.idx];
-        let (x, y) = if o.crtc != 0 {
-            (o.x, o.y)
-        } else {
-            (placed.values().map(|&(x, _, w, _)| x + w as i32).max().unwrap_or(0), 0)
-        };
+        let (x, y) = if o.crtc != 0 { (o.x, o.y) } else { (placed.values().map(|&(x, _, w, _)| x + w as i32).max().unwrap_or(0), 0) };
         placed.insert(name(w), (x, y, w.w, w.h));
     }
     // the screen starts at 0,0
@@ -271,10 +262,7 @@ pub fn plan(outputs: &[Output], cfg: &[MonitorCfg]) -> Result<Arrangement, Strin
         let o = &outputs[i];
         plans.push(Plan { output: o.id, crtc: o.crtc, mode: 0, x: 0, y: 0, rotation: ROT_0, w: 0, h: 0 });
     }
-    let primary = cfg
-        .iter()
-        .filter(|(_, c)| c.primary && !c.off)
-        .find_map(|(n, _)| outputs.iter().find(|o| &o.name == n && o.connected).map(|o| o.id));
+    let primary = cfg.iter().filter(|(_, c)| c.primary && !c.off).find_map(|(n, _)| outputs.iter().find(|o| &o.name == n && o.connected).map(|o| o.id));
     Ok((plans, (sw, sh), primary))
 }
 
@@ -463,11 +451,8 @@ pub fn describe(o: &Output) -> String {
                 None => sizes.push((m.w, m.h, vec![m.rate])),
             }
         }
-        let list: Vec<String> = sizes
-            .iter()
-            .take(8)
-            .map(|(w, h, r)| format!("{w}x{h} ({})", r.iter().map(|r| format!("{r:.0}")).collect::<Vec<_>>().join(", ")))
-            .collect();
+        let list: Vec<String> =
+            sizes.iter().take(8).map(|(w, h, r)| format!("{w}x{h} ({})", r.iter().map(|r| format!("{r:.0}")).collect::<Vec<_>>().join(", "))).collect();
         s += &format!("\n    modes: {}{}", list.join("  "), if sizes.len() > 8 { "  ..." } else { "" });
     }
     s
@@ -493,7 +478,10 @@ pub fn parse(t: Option<mlua::Table>) -> mlua::Result<Vec<MonitorCfg>> {
             None => None,
             Some(m) => {
                 let (w, h) = m.split_once('x').ok_or_else(|| err(format!("monitors[{}]: mode should look like \"1920x1080\"", i + 1)))?;
-                Some((w.trim().parse().map_err(|_| err(format!("monitors[{}]: bad mode '{m}'", i + 1)))?, h.trim().parse().map_err(|_| err(format!("monitors[{}]: bad mode '{m}'", i + 1)))?))
+                Some((
+                    w.trim().parse().map_err(|_| err(format!("monitors[{}]: bad mode '{m}'", i + 1)))?,
+                    h.trim().parse().map_err(|_| err(format!("monitors[{}]: bad mode '{m}'", i + 1)))?,
+                ))
             }
         };
         let rel = |k: &str| e.get::<Option<String>>(k);
@@ -502,7 +490,10 @@ pub fn parse(t: Option<mlua::Table>) -> mlua::Result<Vec<MonitorCfg>> {
                 mlua::Value::String(s) => {
                     let s = s.to_string_lossy();
                     let (x, y) = s.split_once('x').ok_or_else(|| err(format!("monitors[{}]: pos should look like \"1920x0\" or {{ 1920, 0 }}", i + 1)))?;
-                    Pos::At(x.trim().parse().map_err(|_| err(format!("monitors[{}]: bad pos '{s}'", i + 1)))?, y.trim().parse().map_err(|_| err(format!("monitors[{}]: bad pos '{s}'", i + 1)))?)
+                    Pos::At(
+                        x.trim().parse().map_err(|_| err(format!("monitors[{}]: bad pos '{s}'", i + 1)))?,
+                        y.trim().parse().map_err(|_| err(format!("monitors[{}]: bad pos '{s}'", i + 1)))?,
+                    )
                 }
                 mlua::Value::Table(t) => Pos::At(t.get(1)?, t.get(2)?),
                 _ => return Err(err(format!("monitors[{}]: pos should look like \"1920x0\" or {{ 1920, 0 }}", i + 1))),
@@ -627,10 +618,7 @@ mod tests {
         // hybrid graphics: the same ports get other names
         let o = vec![out(1, "eDP-1-0", true, Some((0, 0))), out(2, "HDMI-A-1-0", true, None)];
         let c = |a: &str, b: &str, pos| MonitorCfg { names: vec![a.into(), b.into()], ..mc(a, pos) };
-        let cfg = [
-            MonitorCfg { primary: true, ..c("eDP", "eDP-1-0", Pos::Auto) },
-            c("HDMI-A-0", "HDMI-A-1-0", Pos::RightOf("eDP".into())),
-        ];
+        let cfg = [MonitorCfg { primary: true, ..c("eDP", "eDP-1-0", Pos::Auto) }, c("HDMI-A-0", "HDMI-A-1-0", Pos::RightOf("eDP".into()))];
         let (p, size, prim) = plan(&o, &cfg).unwrap();
         assert_eq!(size, (3840, 1080));
         assert_eq!(p.iter().find(|p| p.output == 2).map(|p| p.x), Some(1920));

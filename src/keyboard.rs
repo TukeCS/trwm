@@ -97,13 +97,7 @@ pub fn current(dpy: *mut xlib::Display) -> Option<Current> {
         if XkbRF_GetNamesProp(dpy, &mut rules, &mut defs) == 0 {
             return None;
         }
-        Some(Current {
-            rules: take(rules),
-            model: take(defs.model),
-            layout: take(defs.layout),
-            variant: take(defs.variant),
-            options: take(defs.options),
-        })
+        Some(Current { rules: take(rules), model: take(defs.model), layout: take(defs.layout), variant: take(defs.variant), options: take(defs.options) })
     }
 }
 
@@ -157,13 +151,8 @@ fn cstr(s: &str) -> Result<CString, String> {
 /// Work out what `cfg` means (filling in unset parts from the current
 /// settings) without changing anything.
 pub fn resolve(dpy: *mut xlib::Display, cfg: &KeyboardCfg) -> Result<Resolved, String> {
-    let cur = current(dpy).unwrap_or(Current {
-        rules: "evdev".into(),
-        model: "pc105".into(),
-        layout: "us".into(),
-        variant: String::new(),
-        options: String::new(),
-    });
+    let cur =
+        current(dpy).unwrap_or(Current { rules: "evdev".into(), model: "pc105".into(), layout: "us".into(), variant: String::new(), options: String::new() });
     let rules_name = if cur.rules.is_empty() { "evdev".to_string() } else { cur.rules.clone() };
     let layout = cfg.layout.clone().unwrap_or(cur.layout);
     // a variant belongs to its layout: a new layout without variant gets none

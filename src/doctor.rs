@@ -147,8 +147,8 @@ fn which(prog: &str) -> Option<PathBuf> {
 }
 
 const SHELL_WORDS: &[&str] = &[
-    "cd", "echo", "printf", "test", "[", "[[", "true", "false", "exec", "export", "if", "then", "else", "fi", "for", "do", "done",
-    "while", "case", "esac", "set", "read", "eval", "source", ".", "local", "return", "exit", "{", "}", "(", ")", "!", "time",
+    "cd", "echo", "printf", "test", "[", "[[", "true", "false", "exec", "export", "if", "then", "else", "fi", "for", "do", "done", "while", "case", "esac",
+    "set", "read", "eval", "source", ".", "local", "return", "exit", "{", "}", "(", ")", "!", "time",
 ];
 
 /// The programs a shell command line runs: the first word of every part
@@ -434,10 +434,7 @@ pub fn run(cfg_path: Option<&Path>) -> i32 {
             }
         }
         if dark && crate::appearance::has_gtk2() && !crate::appearance::has_gtk2_dark_theme() {
-            r.warn(
-                "GTK 2 apps stay light: the Adwaita-dark GTK 2 theme isn't installed",
-                "install gnome-themes-extra",
-            );
+            r.warn("GTK 2 apps stay light: the Adwaita-dark GTK 2 theme isn't installed", "install gnome-themes-extra");
         }
         if !crate::appearance::has_gnome_schema() {
             r.ok("apps that ask the desktop portal (Electron, Qt 6) may stay light: for them, install");
@@ -463,17 +460,15 @@ pub fn run(cfg_path: Option<&Path>) -> i32 {
     r.section("X server");
     let dpy = unsafe { xlib::XOpenDisplay(ptr::null()) };
     if dpy.is_null() {
-        r.warn(
-            "not running inside X: skipping the X checks",
-            "run `trwm doctor` again from a terminal inside your X session for the full check",
-        );
+        r.warn("not running inside X: skipping the X checks", "run `trwm doctor` again from a terminal inside your X session for the full check");
     } else {
         match running_wm(dpy) {
             Some(n) if n == "trwm" => r.ok("trwm is running"),
             Some(n) => r.ok(&format!("window manager running now: {n} (start trwm instead of it to use trwm)")),
             None => r.ok("no window manager running"),
         }
-        let needed = [("RANDR", "monitors, DPI"), ("XInputExtension", "mouse/touchpad settings"), ("XKEYBOARD", "keyboard layouts"), ("XINERAMA", "multi-monitor")];
+        let needed =
+            [("RANDR", "monitors, DPI"), ("XInputExtension", "mouse/touchpad settings"), ("XKEYBOARD", "keyboard layouts"), ("XINERAMA", "multi-monitor")];
         let optional = [("DPMS", "monitor power saving"), ("MIT-SCREEN-SAVER", "idle auto-lock")];
         for (ext, what) in needed {
             if has_extension(dpy, ext) {
@@ -500,7 +495,10 @@ pub fn run(cfg_path: Option<&Path>) -> i32 {
             let root = unsafe { xlib::XRootWindow(dpy, screen) };
             let outs = crate::outputs::query(dpy, root);
             for m in outs.as_deref().map(|o| crate::outputs::missing(o, &cfg.monitors)).unwrap_or_default() {
-                r.warn(&format!("monitors: no output called {m} right now, skipping it"), "`trwm monitors` lists the names; output = { \"a\", \"b\" } accepts several");
+                r.warn(
+                    &format!("monitors: no output called {m} right now, skipping it"),
+                    "`trwm monitors` lists the names; output = { \"a\", \"b\" } accepts several",
+                );
             }
             match outs.map(|o| crate::outputs::plan(&o, &cfg.monitors)) {
                 Some(Ok(_)) => r.ok("monitors: the arrangement is valid"),
@@ -563,10 +561,7 @@ mod tests {
         assert_eq!(programs_in("brightnessctl -m | cut -d, -f4"), vec!["brightnessctl", "cut"]);
         assert_eq!(programs_in("sleep 2 && nm-applet &"), vec!["sleep", "nm-applet"]);
         // separators inside quotes are not commands
-        assert_eq!(
-            programs_in(r#"wpctl get-volume @X@ | awk '/MUTED/{print " muted";exit} {printf " %d%%", $2*100}'"#),
-            vec!["wpctl", "awk"]
-        );
+        assert_eq!(programs_in(r#"wpctl get-volume @X@ | awk '/MUTED/{print " muted";exit} {printf " %d%%", $2*100}'"#), vec!["wpctl", "awk"]);
         assert_eq!(programs_in("supergfxctl -g | sed 's/A/dGPU/;s/Integrated/iGPU/'"), vec!["supergfxctl", "sed"]);
         assert_eq!(programs_in(r#"notify-send "$(date)""#), vec!["notify-send", "date"]);
     }

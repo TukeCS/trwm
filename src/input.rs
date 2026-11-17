@@ -209,7 +209,9 @@ pub fn describe(dpy: *mut xlib::Display, d: &Device) -> String {
         if let Some(p) = get(dpy, d.id, P_PROFILE) {
             parts.push(format!("accel={}", if p.items.get(1) == Some(&1) { "flat" } else { "adaptive" }));
         }
-        for (label, prop) in [("natural_scroll", P_NATURAL), ("left_handed", P_LEFT), ("middle_emulation", P_MIDDLE), ("tap", P_TAP), ("disable_while_typing", P_DWT)] {
+        for (label, prop) in
+            [("natural_scroll", P_NATURAL), ("left_handed", P_LEFT), ("middle_emulation", P_MIDDLE), ("tap", P_TAP), ("disable_while_typing", P_DWT)]
+        {
             if let Some(v) = b(prop) {
                 parts.push(format!("{label}={v}"));
             }

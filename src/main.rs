@@ -6,17 +6,17 @@
 
 #![allow(unsafe_op_in_unsafe_fn, clippy::missing_safety_doc)]
 
+mod appearance;
 mod bsp;
 mod config;
 mod doctor;
 mod drw;
 mod input;
-mod appearance;
-mod outputs;
-mod screen;
 mod keyboard;
 mod lock;
+mod outputs;
 mod pam;
+mod screen;
 mod status;
 mod wm;
 
@@ -107,9 +107,10 @@ fn main() {
         }
         Some("doctor") => exit(doctor::run(cfg_path.as_deref())),
         Some("types") => {
-            let dir = args.get(1).map(PathBuf::from).unwrap_or_else(|| {
-                cfg_path.as_deref().and_then(|p| p.parent()).map(PathBuf::from).unwrap_or_else(config::config_dir)
-            });
+            let dir = args
+                .get(1)
+                .map(PathBuf::from)
+                .unwrap_or_else(|| cfg_path.as_deref().and_then(|p| p.parent()).map(PathBuf::from).unwrap_or_else(config::config_dir));
             match config::write_editor_files(&dir) {
                 Ok(w) if w.is_empty() => println!("editor files in {} are up to date", dir.display()),
                 Ok(w) => w.iter().for_each(|p| println!("wrote {}", p.display())),
@@ -133,10 +134,9 @@ fn run_wm(cfg_path: Option<PathBuf>) {
     // fall back to the built-in default and show the error in the bar
     let (cfg, err) = match config::Config::load(cfg_path.as_deref()) {
         Ok(c) => (c, None),
-        Err(e) => (
-            config::Config::from_source(config::DEFAULT_CONFIG, "default config", None).unwrap_or_else(|e| die(&format!("built-in config: {e}"))),
-            Some(e),
-        ),
+        Err(e) => {
+            (config::Config::from_source(config::DEFAULT_CONFIG, "default config", None).unwrap_or_else(|e| die(&format!("built-in config: {e}"))), Some(e))
+        }
     };
     let watch = cfg_path.clone().or_else(|| Some(config::default_path()).filter(|p| p.exists()));
     // autocomplete for the config in editors (Lua language server)
@@ -175,10 +175,7 @@ fn keyboard_cmd(cfg: config::Config, sub: Option<&str>) {
         match sub {
             None | Some("show") => {
                 match keyboard::current(dpy) {
-                    Some(c) => println!(
-                        "now:     layout={} variant={} model={} options={} (rules {})",
-                        c.layout, c.variant, c.model, c.options, c.rules
-                    ),
+                    Some(c) => println!("now:     layout={} variant={} model={} options={} (rules {})", c.layout, c.variant, c.model, c.options, c.rules),
                     None => println!("now:     unknown (the X server didn't say)"),
                 }
                 println!("active:  {}", keyboard::active_name(dpy).unwrap_or_else(|| "?".into()));

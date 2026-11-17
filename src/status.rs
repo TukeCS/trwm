@@ -75,9 +75,10 @@ fn meminfo() -> HashMap<String, u64> {
         for line in s.lines() {
             let mut it = line.split_whitespace();
             if let (Some(k), Some(v)) = (it.next(), it.next())
-                && let Ok(v) = v.parse::<u64>() {
-                    m.insert(k.trim_end_matches(':').to_string(), v * 1024);
-                }
+                && let Ok(v) = v.parse::<u64>()
+            {
+                m.insert(k.trim_end_matches(':').to_string(), v * 1024);
+            }
         }
     }
     m
@@ -146,10 +147,7 @@ fn ipv4(iface: &str) -> Option<String> {
         let mut out = None;
         while !cur.is_null() {
             let a = &*cur;
-            if !a.ifa_addr.is_null()
-                && (*a.ifa_addr).sa_family as i32 == libc::AF_INET
-                && CStr::from_ptr(a.ifa_name).to_bytes() == iface.as_bytes()
-            {
+            if !a.ifa_addr.is_null() && (*a.ifa_addr).sa_family as i32 == libc::AF_INET && CStr::from_ptr(a.ifa_name).to_bytes() == iface.as_bytes() {
                 let sin = &*(a.ifa_addr as *const libc::sockaddr_in);
                 let ip = u32::from_be(sin.sin_addr.s_addr);
                 out = Some(std::net::Ipv4Addr::from(ip).to_string());
@@ -178,9 +176,9 @@ pub fn builtin(name: &str, arg: Option<&str>) -> String {
     let r: Option<String> = match name {
         "datetime" => datetime(if a.is_empty() { "%F %T" } else { a }),
         "cpu_perc" => cpu_perc(),
-        "cpu_freq" => read("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq")
-            .and_then(|s| s.parse::<f64>().ok())
-            .map(|khz| human(khz * 1000.0, 1000.0) + "Hz"),
+        "cpu_freq" => {
+            read("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq").and_then(|s| s.parse::<f64>().ok()).map(|khz| human(khz * 1000.0, 1000.0) + "Hz")
+        }
         "ram_perc" | "ram_used" | "ram_free" | "ram_total" => {
             let m = meminfo();
             let total = *m.get("MemTotal").unwrap_or(&0);
@@ -225,13 +223,17 @@ pub fn builtin(name: &str, arg: Option<&str>) -> String {
                 _ => None,
             }
         }
-        "temp" => read(or(a, "/sys/class/thermal/thermal_zone0/temp"))
-            .and_then(|s| s.parse::<i64>().ok())
-            .map(|t| format!("{}", t / 1000)),
+        "temp" => read(or(a, "/sys/class/thermal/thermal_zone0/temp")).and_then(|s| s.parse::<i64>().ok()).map(|t| format!("{}", t / 1000)),
         "uptime" => read("/proc/uptime").and_then(|s| s.split_whitespace().next()?.parse::<f64>().ok()).map(|up| {
             let up = up as u64;
             let (d, h, m) = (up / 86400, (up % 86400) / 3600, (up % 3600) / 60);
-            if d > 0 { format!("{d}d {h}h {m}m") } else if h > 0 { format!("{h}h {m}m") } else { format!("{m}m") }
+            if d > 0 {
+                format!("{d}d {h}h {m}m")
+            } else if h > 0 {
+                format!("{h}h {m}m")
+            } else {
+                format!("{m}m")
+            }
         }),
         "load_avg" => read("/proc/loadavg").map(|s| s.split_whitespace().take(3).collect::<Vec<_>>().join(" ")),
         "disk_perc" | "disk_free" | "disk_used" | "disk_total" => statvfs(or(a, "/")).map(|s| {
@@ -421,12 +423,7 @@ impl Status {
     }
 
     pub fn text(&self, cfg: &Config) -> String {
-        cfg.status
-            .components
-            .iter()
-            .zip(&self.slots)
-            .map(|(c, s)| format(&c.fmt, if s.value.is_empty() && s.pending { "…" } else { &s.value }))
-            .collect()
+        cfg.status.components.iter().zip(&self.slots).map(|(c, s)| format(&c.fmt, if s.value.is_empty() && s.pending { "…" } else { &s.value })).collect()
     }
 
     /// Block until all components (including commands) have produced a value.

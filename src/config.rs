@@ -339,15 +339,17 @@ pub fn default_path() -> PathBuf {
 pub fn newest_mtime(path: &Path) -> Option<SystemTime> {
     let mut newest = std::fs::metadata(path).and_then(|m| m.modified()).ok();
     if let Some(dir) = path.parent()
-        && let Ok(rd) = std::fs::read_dir(dir) {
-            for e in rd.flatten() {
-                let p = e.path();
-                if p.extension().is_some_and(|x| x == "lua")
-                    && let Ok(t) = e.metadata().and_then(|m| m.modified()) {
-                        newest = Some(newest.map_or(t, |n| n.max(t)));
-                    }
+        && let Ok(rd) = std::fs::read_dir(dir)
+    {
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.extension().is_some_and(|x| x == "lua")
+                && let Ok(t) = e.metadata().and_then(|m| m.modified())
+            {
+                newest = Some(newest.map_or(t, |n| n.max(t)));
             }
         }
+    }
     newest
 }
 
@@ -410,10 +412,42 @@ fn layout_sel(v: &Value, what: &str) -> mlua::Result<LayoutSel> {
 // ---------------------------------------------------------------------------
 
 const TOP: &[&str] = &[
-    "modkey", "fonts", "font", "dpi", "cursor_size", "cursor_theme", "dark_mode", "screen", "monitors", "keyboard", "mouse", "touchpad",
-    "borderpx", "gaps", "colors", "showbar", "topbar", "hide_empty_tags", "wallpaper", "tags", "rules", "default_layout",
-    "layouts", "mfact", "nmaster", "drag_tiled", "focus_follows_mouse", "snap", "resizehints", "lockfullscreen",
-    "refresh_rate", "keys", "buttons", "status", "lock", "autostart",
+    "modkey",
+    "fonts",
+    "font",
+    "dpi",
+    "cursor_size",
+    "cursor_theme",
+    "dark_mode",
+    "screen",
+    "monitors",
+    "keyboard",
+    "mouse",
+    "touchpad",
+    "borderpx",
+    "gaps",
+    "colors",
+    "showbar",
+    "topbar",
+    "hide_empty_tags",
+    "wallpaper",
+    "tags",
+    "rules",
+    "default_layout",
+    "layouts",
+    "mfact",
+    "nmaster",
+    "drag_tiled",
+    "focus_follows_mouse",
+    "snap",
+    "resizehints",
+    "lockfullscreen",
+    "refresh_rate",
+    "keys",
+    "buttons",
+    "status",
+    "lock",
+    "autostart",
 ];
 const GAPS: &[&str] = &["inner", "outer", "inner_h", "inner_v", "outer_h", "outer_v", "smart", "enabled"];
 const SCHEME: &[&str] = &["fg", "bg", "border"];
@@ -653,11 +687,7 @@ fn get<T: mlua::FromLua>(t: &Table, k: &str, default: T) -> mlua::Result<T> {
 
 fn scheme_from(t: Option<Table>, d: SchemeCfg) -> mlua::Result<SchemeCfg> {
     let Some(t) = t else { return Ok(d) };
-    Ok(SchemeCfg {
-        fg: get(&t, "fg", d.fg)?,
-        bg: get(&t, "bg", d.bg)?,
-        border: get(&t, "border", d.border)?,
-    })
+    Ok(SchemeCfg { fg: get(&t, "fg", d.fg)?, bg: get(&t, "bg", d.bg)?, border: get(&t, "border", d.border)? })
 }
 
 // ---------------------------------------------------------------------------
@@ -792,11 +822,7 @@ impl Config {
         let queue: Queue = Rc::new(RefCell::new(Vec::new()));
         let dir = path.as_ref().and_then(|p| p.parent().map(Path::to_path_buf)).unwrap_or_else(config_dir);
         install_api(&lua, &queue, &dir).map_err(|e| e.to_string())?;
-        let table: Table = lua
-            .load(src)
-            .set_name(format!("@{name}"))
-            .eval()
-            .map_err(|e| e.to_string())?;
+        let table: Table = lua.load(src).set_name(format!("@{name}")).eval().map_err(|e| e.to_string())?;
         let mut cfg = Self::parse(lua.clone(), queue, &table).map_err(|e| e.to_string())?;
         cfg.path = path;
         // Lua errors raised inside actions still go through the queue
@@ -806,8 +832,7 @@ impl Config {
 
     fn parse(lua: Lua, queue: Queue, t: &Table) -> mlua::Result<Config> {
         validate(t)?;
-        let modkey = parse_mods(&get(t, "modkey", "Super".to_string())?, xlib::Mod4Mask)
-            .ok_or_else(|| lerr("modkey: unknown modifier"))?;
+        let modkey = parse_mods(&get(t, "modkey", "Super".to_string())?, xlib::Mod4Mask).ok_or_else(|| lerr("modkey: unknown modifier"))?;
 
         // fonts: string or list
         let dpi: Option<u32> = t.get("dpi")?;
@@ -1039,9 +1064,10 @@ impl Config {
             o => return Err(lerr(format!("wallpaper: expected a path or a table, got {o:?}"))),
         };
         if let Some(w) = &wallpaper
-            && !matches!(w.mode.as_str(), "fill" | "center" | "max" | "scale" | "tile") {
-                return Err(lerr("wallpaper.mode must be one of fill, center, max, scale, tile"));
-            }
+            && !matches!(w.mode.as_str(), "fill" | "center" | "max" | "scale" | "tile")
+        {
+            return Err(lerr("wallpaper.mode must be one of fill, center, max, scale, tile"));
+        }
 
         let autostart = match t.get::<Option<Table>>("autostart")? {
             Some(l) => l.sequence_values::<String>().collect::<mlua::Result<_>>()?,

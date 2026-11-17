@@ -115,10 +115,7 @@ mod tests {
     fn conversation_answers_password_prompts() {
         let pw = CString::new("hunter2").unwrap();
         let prompt = CString::new("Password: ").unwrap();
-        let msgs = [
-            PamMessage { msg_style: PAM_PROMPT_ECHO_OFF, msg: prompt.as_ptr() },
-            PamMessage { msg_style: 4 /* PAM_TEXT_INFO */, msg: prompt.as_ptr() },
-        ];
+        let msgs = [PamMessage { msg_style: PAM_PROMPT_ECHO_OFF, msg: prompt.as_ptr() }, PamMessage { msg_style: 4 /* PAM_TEXT_INFO */, msg: prompt.as_ptr() }];
         let mut ptrs: Vec<*const PamMessage> = msgs.iter().map(|m| m as *const _).collect();
         let mut resp: *mut PamResponse = ptr::null_mut();
         let r = conversation(2, ptrs.as_mut_ptr(), &mut resp, pw.as_ptr() as *mut c_void);

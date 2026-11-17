@@ -58,7 +58,8 @@ pub fn env(dark: Option<bool>) -> Vec<(&'static str, &'static str)> {
     if qt_theme().is_none() {
         v.push(("QT_QPA_PLATFORMTHEME", "gtk3"));
     }
-    if dark && qt_style().is_none()
+    if dark
+        && qt_style().is_none()
         && let Some(style) = qt5_dark_style()
     {
         v.push(("QT_STYLE_OVERRIDE", style));
@@ -135,16 +136,12 @@ fn data_dirs() -> Vec<PathBuf> {
 /// Is the GTK 2 `Adwaita-dark` theme installed (gnome-themes-extra)?
 pub fn has_gtk2_dark_theme() -> bool {
     let home = PathBuf::from(crate::config::home()).join(".themes");
-    std::iter::once(home)
-        .chain(data_dirs().into_iter().map(|d| d.join("themes")))
-        .any(|d| d.join("Adwaita-dark/gtk-2.0").is_dir())
+    std::iter::once(home).chain(data_dirs().into_iter().map(|d| d.join("themes"))).any(|d| d.join("Adwaita-dark/gtk-2.0").is_dir())
 }
 
 /// Is GTK 2 installed?
 pub fn has_gtk2() -> bool {
-    ["/usr/lib", "/usr/lib64", "/usr/lib/x86_64-linux-gnu", "/usr/lib/aarch64-linux-gnu"]
-        .iter()
-        .any(|d| Path::new(d).join("libgtk-x11-2.0.so.0").exists())
+    ["/usr/lib", "/usr/lib64", "/usr/lib/x86_64-linux-gnu", "/usr/lib/aarch64-linux-gnu"].iter().any(|d| Path::new(d).join("libgtk-x11-2.0.so.0").exists())
 }
 
 pub fn gtkrc_path() -> PathBuf {
@@ -191,9 +188,7 @@ pub fn set_gtkrc_theme(text: &str, dark: bool) -> Option<String> {
 /// gsettings can't store the colour scheme, and portals can't report it.)
 pub fn has_gnome_schema() -> bool {
     let dirs = std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".into());
-    dirs.split(':')
-        .filter(|d| !d.is_empty())
-        .any(|d| Path::new(d).join("glib-2.0/schemas/org.gnome.desktop.interface.gschema.xml").exists())
+    dirs.split(':').filter(|d| !d.is_empty()).any(|d| Path::new(d).join("glib-2.0/schemas/org.gnome.desktop.interface.gschema.xml").exists())
 }
 
 fn write_ini(p: &PathBuf, dark: bool) -> std::io::Result<()> {
@@ -270,10 +265,7 @@ mod tests {
     fn gtkrc() {
         assert_eq!(set_gtkrc_theme("", true).as_deref(), Some("gtk-theme-name=\"Adwaita-dark\"\n"));
         let t = "gtk-font-name=\"Sans 10\"\ngtk-theme-name = \"Adwaita\"\n";
-        assert_eq!(
-            set_gtkrc_theme(t, true).as_deref(),
-            Some("gtk-font-name=\"Sans 10\"\ngtk-theme-name=\"Adwaita-dark\"\n")
-        );
+        assert_eq!(set_gtkrc_theme(t, true).as_deref(), Some("gtk-font-name=\"Sans 10\"\ngtk-theme-name=\"Adwaita-dark\"\n"));
         assert_eq!(set_gtkrc_theme("gtk-theme-name=\"Adwaita-dark\"\n", true), None);
         assert_eq!(set_gtkrc_theme("gtk-theme-name=\"Adwaita-dark\"\n", false).as_deref(), Some("gtk-theme-name=\"Adwaita\"\n"));
         // the user's own theme is kept
