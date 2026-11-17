@@ -708,6 +708,9 @@ previous layout (`Mod+space`).
 
 - **Opening a window** splits the window under the mouse cursor. If the cursor isn't over a
   window (for example it's on the bar), the window that had focus last is split.
+- **If you don't move the mouse** between opening windows, its position is ignored, like in
+  Hyprland: each new window splits the focused one (the window you just opened), and windows
+  sliding under the still cursor don't take the focus. Move the mouse to pick a window again.
 - **Closing a window** gives its space back to its neighbour; nothing else moves.
 - **`Mod+h` / `Mod+l`** move the split next to the focused window, making it bigger or smaller.
 - **`Mod+Shift+Return`** swaps the focused window with the first one.

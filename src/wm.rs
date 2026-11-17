@@ -234,6 +234,9 @@ pub struct WindowManager {
     scanning: bool,
     /// dwindle/spiral layout trees, per monitor and set of viewed tags
     trees: HashMap<(usize, u32), bsp::Node>,
+    /// pointer position at the last spiral/dwindle split; while the mouse
+    /// stays there, new windows split the focused window instead (like Hyprland)
+    split_ptr: Option<(i32, i32)>,
     /// keycode of each entry in cfg.keys (0 = key not on this keyboard)
     keycodes: Vec<xlib::KeyCode>,
     /// XInput opcode / RandR event base, for hotplug events
@@ -332,6 +335,7 @@ impl WindowManager {
                 running: true,
                 scanning: false,
                 trees: HashMap::new(),
+                split_ptr: None,
                 keycodes: Vec::new(),
                 xi_opcode: None,
                 rr_event_base: None,
@@ -1840,6 +1844,11 @@ impl WindowManager {
                 return;
             }
             let c = self.clients.contains_key(&e.window).then_some(e.window);
+            // the pointer hasn't moved since a window was split: the window
+            // slid under it, so keep the focus on the new window
+            if c.is_some() && self.split_ptr == Some((e.x_root, e.y_root)) {
+                return;
+            }
             let m = match c {
                 Some(w) => self.clients.get(&w).map_or(self.selmon, |c| c.mon),
                 None => match self.wintomon(e.window) {
@@ -2963,8 +2972,12 @@ impl WindowManager {
                 return;
             }
 
-            // add new windows, oldest first (the client list has the newest first)
-            let pointer = self.getrootptr();
+            // add new windows, oldest first (the client list has the newest first).
+            // A new window splits the window under the mouse, but only if the
+            // mouse moved since the last split: otherwise the layout has changed
+            // under a still pointer, so split the focused window instead.
+            let real_pointer = self.getrootptr();
+            let pointer = real_pointer.filter(|p| self.split_ptr != Some(*p));
             let mut added: Vec<Window> = vec![];
             for &w in tiled.iter().rev() {
                 match tree.as_mut() {
@@ -2996,6 +3009,7 @@ impl WindowManager {
                             }
                         };
                         t.insert(target, w, first);
+                        self.split_ptr = real_pointer;
                     }
                 }
                 added.push(w);
