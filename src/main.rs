@@ -4,7 +4,7 @@
 //! status bar (slstatus) and screen locker (slock), configured in Lua with
 //! hot reloading.
 
-#![allow(unsafe_op_in_unsafe_fn, clippy::missing_safety_doc)]
+#![allow(clippy::missing_safety_doc)]
 
 mod appearance;
 mod bsp;

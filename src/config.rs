@@ -18,13 +18,7 @@ pub const DEFAULT_CONFIG: &str = include_str!("../config.lua");
 /// Type definitions for the Lua language server (autocomplete in editors).
 pub const TYPES: &str = include_str!("../types/trwm.lua");
 
-const LUARC: &str = r#"{
-  "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
-  "runtime.version": "Lua 5.4",
-  "workspace.library": ["types"],
-  "workspace.checkThirdParty": false
-}
-"#;
+const LUARC: &str = include_str!("../.luarc.json");
 
 /// Write the editor support files next to the config: types/trwm.lua (kept
 /// up to date with this version of trwm) and .luarc.json (only if missing,

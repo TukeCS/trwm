@@ -183,8 +183,9 @@
 ---@field off (integer|false)? seconds without input before the monitor switches off (false = never)
 
 ---@class trwm.Config
----@field modkey ("Super"|"Alt"|"Mod4"|"Mod1")? what "Mod" means in keys and buttons
+---@field modkey ("Super"|"Alt"|"Ctrl"|"Shift"|"Mod4"|"Mod1"|"Mod5"|"AltGr"|"Win"|"Logo"|"Meta"|"Control"|"Mod2"|"Mod3")? what "Mod" means in keys and buttons
 ---@field fonts (string|string[])? bar fonts; later ones are used for missing characters
+---@field font string? a single bar font (same as `fonts` with one entry)
 ---@field dpi integer? screen DPI: 96 normal, 144 = 150%, 192 = 200%
 ---@field cursor_size integer? mouse cursor size in pixels
 ---@field cursor_theme string? cursor theme from /usr/share/icons or ~/.icons

@@ -238,62 +238,66 @@ pub fn run(cfg: &LockCfg, dpi: Option<u32>) -> Result<(), String> {
 }
 
 unsafe fn invisible_cursor(dpy: *mut xlib::Display, root: xlib::Window) -> xlib::Cursor {
-    let data = [0 as c_char; 8];
-    let pm = xlib::XCreateBitmapFromData(dpy, root, data.as_ptr(), 8, 8);
-    let mut c: xlib::XColor = std::mem::zeroed();
-    let cur = xlib::XCreatePixmapCursor(dpy, pm, pm, &mut c, &mut c, 0, 0);
-    xlib::XFreePixmap(dpy, pm);
-    cur
+    unsafe {
+        let data = [0 as c_char; 8];
+        let pm = xlib::XCreateBitmapFromData(dpy, root, data.as_ptr(), 8, 8);
+        let mut c: xlib::XColor = std::mem::zeroed();
+        let cur = xlib::XCreatePixmapCursor(dpy, pm, pm, &mut c, &mut c, 0, 0);
+        xlib::XFreePixmap(dpy, pm);
+        cur
+    }
 }
 
 unsafe fn lock_screen(dpy: *mut xlib::Display, screen: c_int, cfg: &LockCfg, dpi: Option<u32>) -> Result<Screen, String> {
-    let root = xlib::XRootWindow(dpy, screen);
-    let w = xlib::XDisplayWidth(dpy, screen) as u32;
-    let h = xlib::XDisplayHeight(dpy, screen) as u32;
+    unsafe {
+        let root = xlib::XRootWindow(dpy, screen);
+        let w = xlib::XDisplayWidth(dpy, screen) as u32;
+        let h = xlib::XDisplayHeight(dpy, screen) as u32;
 
-    let mut big = Drw::new(dpy, screen, root, w, h);
-    let mut small = Drw::new(dpy, screen, root, 1, 1);
-    big.set_fonts(&crate::config::with_dpi(&[cfg.font.clone(), "monospace:size=48".into()], dpi));
-    small.set_fonts(&crate::config::with_dpi(&[cfg.small_font.clone(), "monospace:size=14".into()], dpi));
-    let colors = [big.color(&cfg.init), big.color(&cfg.input), big.color(&cfg.failed), big.color(&cfg.text)];
+        let mut big = Drw::new(dpy, screen, root, w, h);
+        let mut small = Drw::new(dpy, screen, root, 1, 1);
+        big.set_fonts(&crate::config::with_dpi(&[cfg.font.clone(), "monospace:size=48".into()], dpi));
+        small.set_fonts(&crate::config::with_dpi(&[cfg.small_font.clone(), "monospace:size=14".into()], dpi));
+        let colors = [big.color(&cfg.init), big.color(&cfg.input), big.color(&cfg.failed), big.color(&cfg.text)];
 
-    let mut wa: xlib::XSetWindowAttributes = std::mem::zeroed();
-    wa.override_redirect = xlib::True;
-    wa.background_pixel = colors[0].pixel;
-    wa.event_mask = xlib::ExposureMask | xlib::VisibilityChangeMask;
-    let win = xlib::XCreateWindow(
-        dpy,
-        root,
-        0,
-        0,
-        w,
-        h,
-        0,
-        xlib::XDefaultDepth(dpy, screen),
-        xlib::CopyFromParent as c_uint,
-        xlib::XDefaultVisual(dpy, screen),
-        xlib::CWOverrideRedirect | xlib::CWBackPixel | xlib::CWEventMask,
-        &mut wa,
-    );
-    let cursor = invisible_cursor(dpy, root);
-    xlib::XDefineCursor(dpy, win, cursor);
-    xlib::XMapRaised(dpy, win);
-    xlib::XSelectInput(dpy, root, xlib::SubstructureNotifyMask);
+        let mut wa: xlib::XSetWindowAttributes = std::mem::zeroed();
+        wa.override_redirect = xlib::True;
+        wa.background_pixel = colors[0].pixel;
+        wa.event_mask = xlib::ExposureMask | xlib::VisibilityChangeMask;
+        let win = xlib::XCreateWindow(
+            dpy,
+            root,
+            0,
+            0,
+            w,
+            h,
+            0,
+            xlib::XDefaultDepth(dpy, screen),
+            xlib::CopyFromParent as c_uint,
+            xlib::XDefaultVisual(dpy, screen),
+            xlib::CWOverrideRedirect | xlib::CWBackPixel | xlib::CWEventMask,
+            &mut wa,
+        );
+        let cursor = invisible_cursor(dpy, root);
+        xlib::XDefineCursor(dpy, win, cursor);
+        xlib::XMapRaised(dpy, win);
+        xlib::XSelectInput(dpy, root, xlib::SubstructureNotifyMask);
 
-    let mut heads = Vec::new();
-    if xinerama::XineramaIsActive(dpy) != 0 {
-        let mut n = 0;
-        let info = xinerama::XineramaQueryScreens(dpy, &mut n);
-        for i in 0..n as usize {
-            let s = &*info.add(i);
-            heads.push((s.x_org as i32, s.y_org as i32, s.width as u32, s.height as u32));
+        let mut heads = Vec::new();
+        if xinerama::XineramaIsActive(dpy) != 0 {
+            let mut n = 0;
+            let info = xinerama::XineramaQueryScreens(dpy, &mut n);
+            for i in 0..n as usize {
+                let s = &*info.add(i);
+                heads.push((s.x_org as i32, s.y_org as i32, s.width as u32, s.height as u32));
+            }
+            xlib::XFree(info as *mut _);
         }
-        xlib::XFree(info as *mut _);
+        if heads.is_empty() {
+            heads.push((0, 0, w, h));
+        }
+        Ok(Screen { root, win, big, small, heads, colors })
     }
-    if heads.is_empty() {
-        heads.push((0, 0, w, h));
-    }
-    Ok(Screen { root, win, big, small, heads, colors })
 }
 
 fn now(fmt: &str) -> String {
@@ -302,41 +306,43 @@ fn now(fmt: &str) -> String {
 
 /// `wait`: seconds left of a `lockout`, if one is running
 unsafe fn draw(dpy: *mut xlib::Display, s: &Screen, cfg: &LockCfg, state: State, failures: u32, wait: Option<u64>) {
-    let bg = s.colors[match state {
-        State::Init => 0,
-        State::Input => 1,
-        State::Failed => 2,
-    }];
-    let fg = s.colors[3];
-    let canvas = s.big.drawable;
-    s.big.fill_on(canvas, 0, 0, s.big.w, s.big.h, &bg);
+    unsafe {
+        let bg = s.colors[match state {
+            State::Init => 0,
+            State::Input => 1,
+            State::Failed => 2,
+        }];
+        let fg = s.colors[3];
+        let canvas = s.big.drawable;
+        s.big.fill_on(canvas, 0, 0, s.big.w, s.big.h, &bg);
 
-    // (text, font) lines, centred on every monitor
-    let mut lines: Vec<(String, &Drw)> = Vec::new();
-    if cfg.clock {
-        lines.push((now("%H:%M"), &s.big));
-        lines.push((now("%A, %d %B %Y"), &s.small));
-    }
-    if let Some(m) = &cfg.message {
-        lines.push((m.clone(), &s.small));
-    }
-    if failures > 0 && cfg.clock {
-        lines.push((format!("{failures} failed attempt{}", if failures == 1 { "" } else { "s" }), &s.small));
-    }
-    if let Some(w) = wait {
-        lines.push((format!("too many attempts, try again in {}:{:02}", w / 60, w % 60), &s.small));
-    }
-    let lh = |d: &Drw| d.font_h() + d.font_h() / 3;
-    let total: u32 = lines.iter().map(|(_, d)| lh(d)).sum();
-    for &(hx, hy, hw, hh) in &s.heads {
-        let mut y = hy + (hh as i32 - total as i32) / 2;
-        for (text, d) in &lines {
-            let tw = d.text_width(text);
-            let x = hx + (hw as i32 - tw as i32) / 2;
-            d.text_on(canvas, x, y, tw, lh(d), 0, text, &fg, &bg);
-            y += lh(d) as i32;
+        // (text, font) lines, centred on every monitor
+        let mut lines: Vec<(String, &Drw)> = Vec::new();
+        if cfg.clock {
+            lines.push((now("%H:%M"), &s.big));
+            lines.push((now("%A, %d %B %Y"), &s.small));
         }
+        if let Some(m) = &cfg.message {
+            lines.push((m.clone(), &s.small));
+        }
+        if failures > 0 && cfg.clock {
+            lines.push((format!("{failures} failed attempt{}", if failures == 1 { "" } else { "s" }), &s.small));
+        }
+        if let Some(w) = wait {
+            lines.push((format!("too many attempts, try again in {}:{:02}", w / 60, w % 60), &s.small));
+        }
+        let lh = |d: &Drw| d.font_h() + d.font_h() / 3;
+        let total: u32 = lines.iter().map(|(_, d)| lh(d)).sum();
+        for &(hx, hy, hw, hh) in &s.heads {
+            let mut y = hy + (hh as i32 - total as i32) / 2;
+            for (text, d) in &lines {
+                let tw = d.text_width(text);
+                let x = hx + (hw as i32 - tw as i32) / 2;
+                d.text_on(canvas, x, y, tw, lh(d), 0, text, &fg, &bg);
+                y += lh(d) as i32;
+            }
+        }
+        s.big.map(s.win, 0, 0, s.big.w, s.big.h);
+        xlib::XFlush(dpy);
     }
-    s.big.map(s.win, 0, 0, s.big.w, s.big.h);
-    xlib::XFlush(dpy);
 }

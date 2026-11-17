@@ -64,45 +64,50 @@ struct Prop {
 
 /// Read a device property (items widened to u32).
 unsafe fn get(dpy: *mut xlib::Display, dev: c_int, name: &str) -> Option<Prop> {
-    let a = atom(dpy, name, true);
-    if a == 0 {
-        return None;
-    }
-    let (mut kind, mut format, mut n, mut after) = (0 as c_ulong, 0 as c_int, 0 as c_ulong, 0 as c_ulong);
-    let mut data: *mut c_uchar = ptr::null_mut();
-    let r = xinput2::XIGetProperty(dpy, dev, a, 0, 64, xlib::False, xlib::AnyPropertyType as c_ulong, &mut kind, &mut format, &mut n, &mut after, &mut data);
-    if r != xlib::Success as c_int || data.is_null() || kind == 0 {
-        if !data.is_null() {
-            xlib::XFree(data as *mut _);
+    unsafe {
+        let a = atom(dpy, name, true);
+        if a == 0 {
+            return None;
         }
-        return None;
+        let (mut kind, mut format, mut n, mut after) = (0 as c_ulong, 0 as c_int, 0 as c_ulong, 0 as c_ulong);
+        let mut data: *mut c_uchar = ptr::null_mut();
+        let r =
+            xinput2::XIGetProperty(dpy, dev, a, 0, 64, xlib::False, xlib::AnyPropertyType as c_ulong, &mut kind, &mut format, &mut n, &mut after, &mut data);
+        if r != xlib::Success as c_int || data.is_null() || kind == 0 {
+            if !data.is_null() {
+                xlib::XFree(data as *mut _);
+            }
+            return None;
+        }
+        let n = n as usize;
+        let items = match format {
+            8 => std::slice::from_raw_parts(data, n).iter().map(|&b| b as u32).collect(),
+            16 => std::slice::from_raw_parts(data as *const u16, n).iter().map(|&b| b as u32).collect(),
+            _ => std::slice::from_raw_parts(data as *const u32, n).to_vec(),
+        };
+        xlib::XFree(data as *mut _);
+        Some(Prop { kind, format, items })
     }
-    let n = n as usize;
-    let items = match format {
-        8 => std::slice::from_raw_parts(data, n).iter().map(|&b| b as u32).collect(),
-        16 => std::slice::from_raw_parts(data as *const u16, n).iter().map(|&b| b as u32).collect(),
-        _ => std::slice::from_raw_parts(data as *const u32, n).to_vec(),
-    };
-    xlib::XFree(data as *mut _);
-    Some(Prop { kind, format, items })
 }
 
 /// Write a device property back with the same type and format.
 unsafe fn put(dpy: *mut xlib::Display, dev: c_int, name: &str, p: &Prop) {
-    let a = atom(dpy, name, true);
-    let n = p.items.len() as c_int;
-    match p.format {
-        8 => {
-            let mut v: Vec<u8> = p.items.iter().map(|&x| x as u8).collect();
-            xinput2::XIChangeProperty(dpy, dev, a, p.kind, 8, xlib::PropModeReplace, v.as_mut_ptr(), n);
-        }
-        16 => {
-            let mut v: Vec<u16> = p.items.iter().map(|&x| x as u16).collect();
-            xinput2::XIChangeProperty(dpy, dev, a, p.kind, 16, xlib::PropModeReplace, v.as_mut_ptr() as *mut c_uchar, n);
-        }
-        _ => {
-            let mut v = p.items.clone();
-            xinput2::XIChangeProperty(dpy, dev, a, p.kind, 32, xlib::PropModeReplace, v.as_mut_ptr() as *mut c_uchar, n);
+    unsafe {
+        let a = atom(dpy, name, true);
+        let n = p.items.len() as c_int;
+        match p.format {
+            8 => {
+                let mut v: Vec<u8> = p.items.iter().map(|&x| x as u8).collect();
+                xinput2::XIChangeProperty(dpy, dev, a, p.kind, 8, xlib::PropModeReplace, v.as_mut_ptr(), n);
+            }
+            16 => {
+                let mut v: Vec<u16> = p.items.iter().map(|&x| x as u16).collect();
+                xinput2::XIChangeProperty(dpy, dev, a, p.kind, 16, xlib::PropModeReplace, v.as_mut_ptr() as *mut c_uchar, n);
+            }
+            _ => {
+                let mut v = p.items.clone();
+                xinput2::XIChangeProperty(dpy, dev, a, p.kind, 32, xlib::PropModeReplace, v.as_mut_ptr() as *mut c_uchar, n);
+            }
         }
     }
 }
@@ -138,44 +143,48 @@ pub fn devices(dpy: *mut xlib::Display) -> Vec<Device> {
 }
 
 unsafe fn set_bool(dpy: *mut xlib::Display, dev: c_int, name: &str, on: Option<bool>) {
-    let Some(on) = on else { return };
-    if let Some(mut p) = get(dpy, dev, name)
-        && p.items.first() != Some(&(on as u32))
-    {
-        if p.items.is_empty() {
-            p.items.push(0);
+    unsafe {
+        let Some(on) = on else { return };
+        if let Some(mut p) = get(dpy, dev, name)
+            && p.items.first() != Some(&(on as u32))
+        {
+            if p.items.is_empty() {
+                p.items.push(0);
+            }
+            p.items[0] = on as u32;
+            put(dpy, dev, name, &p);
         }
-        p.items[0] = on as u32;
-        put(dpy, dev, name, &p);
     }
 }
 
 unsafe fn apply_device(dpy: *mut xlib::Display, d: &Device, cfg: &PointerCfg) {
-    set_bool(dpy, d.id, P_NATURAL, cfg.natural_scroll);
-    set_bool(dpy, d.id, P_LEFT, cfg.left_handed);
-    set_bool(dpy, d.id, P_MIDDLE, cfg.middle_emulation);
-    set_bool(dpy, d.id, P_TAP, cfg.tap);
-    set_bool(dpy, d.id, P_DWT, cfg.disable_while_typing);
-    if let Some(speed) = cfg.speed
-        && let Some(mut p) = get(dpy, d.id, P_SPEED)
-        && !p.items.is_empty()
-    {
-        let bits = speed.clamp(-1.0, 1.0).to_bits();
-        if p.items[0] != bits {
-            p.items[0] = bits;
-            put(dpy, d.id, P_SPEED, &p);
+    unsafe {
+        set_bool(dpy, d.id, P_NATURAL, cfg.natural_scroll);
+        set_bool(dpy, d.id, P_LEFT, cfg.left_handed);
+        set_bool(dpy, d.id, P_MIDDLE, cfg.middle_emulation);
+        set_bool(dpy, d.id, P_TAP, cfg.tap);
+        set_bool(dpy, d.id, P_DWT, cfg.disable_while_typing);
+        if let Some(speed) = cfg.speed
+            && let Some(mut p) = get(dpy, d.id, P_SPEED)
+            && !p.items.is_empty()
+        {
+            let bits = speed.clamp(-1.0, 1.0).to_bits();
+            if p.items[0] != bits {
+                p.items[0] = bits;
+                put(dpy, d.id, P_SPEED, &p);
+            }
         }
-    }
-    if let Some(accel) = &cfg.accel
-        && let Some(mut p) = get(dpy, d.id, P_PROFILE)
-    {
-        // one flag per profile: adaptive, flat (, custom)
-        let idx = if accel == "flat" { 1 } else { 0 };
-        if idx < p.items.len() {
-            let want: Vec<u32> = (0..p.items.len()).map(|i| (i == idx) as u32).collect();
-            if p.items != want {
-                p.items = want;
-                put(dpy, d.id, P_PROFILE, &p);
+        if let Some(accel) = &cfg.accel
+            && let Some(mut p) = get(dpy, d.id, P_PROFILE)
+        {
+            // one flag per profile: adaptive, flat (, custom)
+            let idx = if accel == "flat" { 1 } else { 0 };
+            if idx < p.items.len() {
+                let want: Vec<u32> = (0..p.items.len()).map(|i| (i == idx) as u32).collect();
+                if p.items != want {
+                    p.items = want;
+                    put(dpy, d.id, P_PROFILE, &p);
+                }
             }
         }
     }
